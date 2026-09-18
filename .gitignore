@@ -3,4 +3,5 @@
 
 tutorial_1/example/cmake/build/
 tutorial_2/example/opencv/build/
+compile_commands.json
 tutorial_2/example/opencv/result.png
