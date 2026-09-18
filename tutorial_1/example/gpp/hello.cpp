@@ -11,5 +11,6 @@
 
 int main() {
   std::cout << "Hello, SPR Vision!\n";
+  // spr_train
   return 0;
 }
