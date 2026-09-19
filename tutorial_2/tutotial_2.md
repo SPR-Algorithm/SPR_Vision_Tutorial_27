@@ -1,4 +1,4 @@
-# 第二阶段培训教案：面向对象与 OpenCV
+# 第二阶段培训：面向对象与 OpenCV
 
 | 项目     | 内容                                                                                                 |
 | -------- | ---------------------------------------------------------------------------------------------------- |
@@ -6,22 +6,6 @@
 | 教学重点 | 类与对象、封装、构造函数/析构函数；`cv::Mat` 与图像处理流水线；灯条筛选与配对的几何约束              |
 | 教学难点 | 用类把「数据 + 行为」封装成可复用组件；装甲板识别中「灯条 → 配对 → 四点」的几何推理与打分            |
 | 考核方式 | 提交一个 ROS2 功能包：读 `/image_raw` 视频流 → 传统方法识别 → 发布四个角点；接口对齐 Daedalus 模拟器 |
-
-**核心词速览（原提纲）**
-
-> c++ 面对对象　基于相机类的开发　学会类和对象的相关知识
->
-> opencv 的简单学习　使用传统方法完成装甲板的识别　学会调用对应的库函数。
->
-> ros2 简单的框架设计　理解系统框架的设计
->
-> 作业　使用基于 ros2 框架下的开发，实现一个传统的装甲板的识别节点。
-
-> 本阶段教案正文展开前两项：**面向对象** 与 **OpenCV 装甲板识别**——它们是识别节点的「算法内核」。
-> 第三项 **ROS2 框架设计** 直接落在作业里（功能包结构、`rosidl` 消息、`cv_bridge`、节点封装、
-> 视频流处理），以 [`homework_2.md`](homework_2.md) 为准，教案里不另展开。
-
-下面按「核心词 → 概念 → 最小实例 → 常见坑」逐项展开。
 
 ---
 
@@ -491,17 +475,6 @@ for (int i = 0; i < 4; ++i) {
 
 完整可运行版本：`example/opencv/armor_detect.cpp`，用仓库自带的 `demo/bule_armoe.jpg` 实测通过。
 
-**常见坑**
-
-- **`cv::imread` 失败不报错**，只返回空 `Mat`。永远先 `if (img.empty())`。
-- **BGR 不是 RGB**：`imread` 读进来是 BGR，`imshow` 也按 BGR 显示，但 `cv::Scalar(255, 0, 0)` 是**蓝色**。
-- **`findContours` 会修改输入图**（旧版本更明显），习惯上先 `clone()` 一份。
-- **`cv::Mat b = a` 是浅拷贝**，改 `b` 会影响 `a`；要独立数据用 `a.clone()`。
-- **`at<T>` 的参数顺序是 `(y, x)`**，写反了不报错但结果全错。
-- **`waitKey(0)` 在无显示环境下会卡死**：跑在服务器/容器里就改成 `imwrite` 存文件，或加个环境变量开关跳过开窗。
-- **阈值写死数字**：光照一变就崩。优先用 OTSU 或自适应阈值 `cv::adaptiveThreshold`。
-- **只筛长宽比不够**：装甲板上的白色数字长宽比也像灯条，必须再加宽度（或面积）上下限。
-- **OpenCV 5 把 `minAreaRect` 从 `imgproc` 挪到了 `opencv2/geometry/2d.hpp`**：4.x 上 `#include <opencv2/imgproc.hpp>` 就够，要跨版本可以用 `__has_include` 做兼容。
 
 <!-- constexpr double LIGHTBAR_LENGTH = 56e-3;     // m，灯条长度 56mm
 constexpr double BIG_ARMOR_WIDTH = 230e-3;    // m，大装甲板宽度
@@ -529,7 +502,7 @@ constexpr double SMALL_ARMOR_WIDTH = 135e-3;  // m，小装甲板宽度 -->
 - OpenCV 官方文档 · 图像处理模块：https://docs.opencv.org/4.x/d7/dbd/group__imgproc.html
 - 传统装甲板识别参考思路（RoboMaster 社区大量开源实现可作对照）
 
-> ROS2 没有单独开一节，它落在[第二阶段作业](homework_2.md)里（ROS2 Humble + `rclcpp` +
+> ROS2 待更新，它落在[第二阶段作业](homework_2.md)里（ROS2 Humble + `rclcpp` +
 > `cv_bridge` + `rosidl` 自定义消息）。官方教程：https://docs.ros.org/en/humble/Tutorials.html
 
 > 注：也可以适当参考 AI 进行学习，但要注意信息甄别，而且不要只让 AI 全程完成项目。
