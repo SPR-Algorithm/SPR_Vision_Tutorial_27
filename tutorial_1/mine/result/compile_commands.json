@@ -1,0 +1,12 @@
+[
+{
+  "directory": "/home/rsve/SPR_Vision_Tutorial_27/tutorial_1/mine/result",
+  "command": "/usr/bin/c++  -I/home/rsve/SPR_Vision_Tutorial_27/tutorial_1/mine/h -std=gnu++17 -o CMakeFiles/math.dir/cpp/math.cpp.o -c /home/rsve/SPR_Vision_Tutorial_27/tutorial_1/mine/cpp/math.cpp",
+  "file": "/home/rsve/SPR_Vision_Tutorial_27/tutorial_1/mine/cpp/math.cpp"
+},
+{
+  "directory": "/home/rsve/SPR_Vision_Tutorial_27/tutorial_1/mine/result",
+  "command": "/usr/bin/c++  -I/home/rsve/SPR_Vision_Tutorial_27/tutorial_1/mine/h -std=gnu++17 -o CMakeFiles/APP.dir/cpp/main.cpp.o -c /home/rsve/SPR_Vision_Tutorial_27/tutorial_1/mine/cpp/main.cpp",
+  "file": "/home/rsve/SPR_Vision_Tutorial_27/tutorial_1/mine/cpp/main.cpp"
+}
+]

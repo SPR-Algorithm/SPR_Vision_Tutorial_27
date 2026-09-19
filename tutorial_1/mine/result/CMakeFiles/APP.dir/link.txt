@@ -1,0 +1,1 @@
+/usr/bin/c++ CMakeFiles/APP.dir/cpp/main.cpp.o -o APP  libmath.a 

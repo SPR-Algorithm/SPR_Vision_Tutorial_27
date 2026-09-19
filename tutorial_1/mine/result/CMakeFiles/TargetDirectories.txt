@@ -1,0 +1,4 @@
+/home/rsve/SPR_Vision_Tutorial_27/tutorial_1/mine/result/CMakeFiles/math.dir
+/home/rsve/SPR_Vision_Tutorial_27/tutorial_1/mine/result/CMakeFiles/APP.dir
+/home/rsve/SPR_Vision_Tutorial_27/tutorial_1/mine/result/CMakeFiles/edit_cache.dir
+/home/rsve/SPR_Vision_Tutorial_27/tutorial_1/mine/result/CMakeFiles/rebuild_cache.dir
