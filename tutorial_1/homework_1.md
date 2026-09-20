@@ -6,7 +6,7 @@
 
 ## 1. 题目
 
-写一个简单的**二维向量运算库**：计算二维向量的距离、模长、点乘、缩放，实现单位化与夹角。
+写一个简单的**n维向量运算库**：计算n维向量的距离、模长、点乘、缩放，实现单位化与夹角。
 
 **类型定义**
 
@@ -90,3 +90,39 @@ using Matrix = std::vector<std::vector<double>>;
 - `concatenate` 的 `axis=0` 上下拼接，`axis=1` 左右拼接
 - 输入不合法时抛 `std::logic_error`（维度不匹配、求奇异矩阵的逆、下标越界……）
 - 空矩阵要单独考虑（例如空矩阵的行列式约定为 1）
+
+---
+
+## 5. 参考文件结构
+
+> 推荐布局：**声明放 `include/`、实现放 `src/`、自测放 `test/`**。文件名不强制，
+> 但「头文件与实现分离、`include/` 能直接被 `#include` 到」这两点必须满足。
+
+```text
+homework_1/
+├── CMakeLists.txt                # add_library + target_include_directories
+├── include/                       |（#pragma once）
+│   ├── vector.hpp                # 
+│   └── matrix.hpp                # 
+├── src/                          # 
+│   ├── vector.cpp
+│   └── matrix.cpp                # 加分项
+└── test/                         # 自测用例（选做，不检查内容）
+    ├── test_vector.cpp
+    └── test_matrix.cpp           # 加分项
+```
+
+**对应关系**
+
+| 目录 / 文件      | 作用                   | 作业中的位置 |
+| ---------------- | ---------------------- | ------------ |
+| `include/*.hpp`  | 接口声明、边界约定     | §1 接口格式  |
+| `src/*.cpp`      | 具体实现               | §1 / §4 约束 |
+| `CMakeLists.txt` | 造库并暴露 `include/`  | §2.3 CMake   |
+| `test/`          | 自己写用例验证（选做） | §3 验收清单  |
+
+**要点**
+
+- `include/` 用 `target_include_directories(<lib> PUBLIC include)` 暴露出去，使用者只写 `#include "vector.hpp"`。
+- `matrix.hpp` 里要用到 `rm::Matrix` / `rm::Vector`，所以加分项那个库要 `target_link_libraries(rm_matrix PUBLIC rm_vector)`。
+- 根目录只留源码与 `CMakeLists.txt`：`build/`、`*.o` / `*.a` 一律交给 `.gitignore` 挡住，不要提交。
