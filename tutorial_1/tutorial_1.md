@@ -180,41 +180,131 @@ git commit -m "feat: 初始化二维向量库骨架"
 git log --oneline --graph --all            # 查看提交历史
 ```
 
-### 2.3 最小实例 B：克隆 + 推送（考核要求）
+### 2.3 最小实例 B：克隆 → 建分支 → 推送（考核要求）
+
+**工作流约定（先记住这三条）**
+
+1. 仓库是**共享的模板仓库**，`main` 分支由讲师维护，**任何人都不要直接往 `main` 提交**
+2. 每个人在**自己的分支**上做作业，分支名统一用 `feat/<你的名字>`
+3. **push 之前，先把 `main` 的最新内容同步到自己的分支**（讲师会更新模板）
+
+> **`main` 必须保持干净**：不往 `main` 推送，也不要在 GitHub 上点 Merge。你的所有提交只应出现在自己的分支上。
+> （讲师侧：建议在仓库 Settings → Branches 给 `main` 加分支保护，从根上杜绝误推送。）
+
+**第 1 步：配好 SSH（推荐）**
 
 ```bash
-# 1. 先在 GitHub 网页上 Fork 或创建仓库，然后：
-git clone git@github.com:你的用户名/vec2_demo.git
-cd vec2_demo
+ssh-keygen   # 一路回车，默认存到 ~/.ssh/id_ed25519
+cat ~/.ssh/id_rsa.pub                    # 复制这一整行
+```
 
-# 2. 改代码 → 提交
+粘到 GitHub → Settings → SSH and GPG keys → New SSH key，然后验证：
+
+```bash
+ssh -T git@github.com                        # 看到 "Hi <用户名>!" 就成了
+```
+
+> 用 HTTPS 也能拉，只是每次 push 都要输 token，比较烦。
+
+**第 2 步：克隆**
+
+```bash
+git clone git@github.com:SPR-Algorithm/SPR_Vision_Tutorial_27.git
+cd SPR_Vision_Tutorial_27
+
+git remote -v                                # 确认 origin 指向这个仓库
+```
+
+**第 3 步：建自己的工作分支（关键）**
+
+```bash
+git switch -c feat/你的名字
+git branch                                   # 确认带 * 的是自己的分支
+```
+
+> ⚠️ **不要直接在 `main` 上改代码**。`main` 是所有人的公共基线。
+
+**第 4 步：改代码 → 提交**
+
+```bash
 git add include/vector2d.hpp src/vector2d.cpp
-git commit -m "feat: 实现模长、距离、点乘、缩放"
-
-# 3. 推送到远程
-git push origin main
-
-# 4.（可选）关联上游，方便同步作业模板的更新
-git remote add upstream git@github.com:组织/vec2_demo.git
-git fetch upstream
-git pull upstream main
+git commit -m "feat(vec2): 实现模长、距离、点乘、缩放"
 ```
 
-> **提示**
-> `git remote -v` 可查看当前配置的远程地址；`git status` 说 `Your branch is ahead of 'origin/main' by 1 commit` 就说明还没 push。
-
-### 2.4 分支与合并（了解即可，第三阶段会大量用）
+**第 5 步：push 之前，先同步 `main` 的最新内容**
 
 ```bash
-git switch -c feature/dot-product    # 新建并切换分支
-# ...改代码...
-git commit -am "feat: 增加点乘"
 git switch main
-git merge feature/dot-product
-git branch -d feature/dot-product
+git pull origin main                # 拉取 main 的最新提交
+git switch feat/你的名字
+git rebase main                     # 把自己的提交「接」到最新 main 后面
 ```
 
-**冲突**：两个分支改了同一行，merge 时会报 `CONFLICT`，手动编辑文件里的 `<<<<<<<` / `=======` / `>>>>>>>` 标记后再 `git add` + `git commit`。
+**第 6 步：推送自己的分支**
+
+```bash
+git push -u origin feat/你的名字    # -u 关联远程分支，之后直接 git push 就行
+```
+
+**第 7 步：交作业**
+
+推完分支后，把**分支名**告诉我们（例如 `feat/zhangsan`），我们会切到你的分支上验收。
+
+
+**整条流程速查**
+
+```bash
+git clone git@github.com:SPR-Algorithm/SPR_Vision_Tutorial_27.git   # 克隆
+git switch -c feat/你的名字                                          # 建分支
+
+# ...改代码...
+
+git add ... && git commit -m "feat(vec2): ..."                       # 提交
+
+git switch main && git pull origin main                              # 同步 main
+git switch feat/你的名字 && git rebase main                          # 接到最新 main 后面
+git push -u origin feat/你的名字                                     # 推自己的分支
+、
+```
+
+> 上面只是**流程骨架**。实际命令里的分支名、文件名都要换成你自己的，**不要照抄**。
+
+**常见坑**
+
+- **直接在 `main` 上提交**：会污染大家的公共基线。开工前先 `git branch` 确认带 `*` 的是自己的分支；`main` 已开分支保护，误推会被拒。
+- **在 GitHub 上点了合并按钮**：不管是走 PR 还是直接合并，都会把内容并进 `main`。仓库页面的合并按钮一律不要动。
+- **push 前忘了同步 `main`**：如果 `main` 改过同一个文件，你的分支就会和它打架，rebase 时直接报冲突。
+- **rebase 之后 push 被拒**：rebase 改写了提交历史，需要 `git push --force-with-lease`。**只对自己分支用，绝不要对 `main` 用。**
+- **把 `build/`、`.vscode/` 一起提交**：先写 `.gitignore`，提交前 `git status` 看一眼。
+- **提交信息写「改了下」**：验收时会看 `git log`。
+
+### 2.4 同步 main：rebase 还是 merge（了解即可）
+
+你的分支从建出来那一刻起就开始落后于 `main`，所以要定期把 `main` 的新内容并进来。有两种方式：
+
+```bash
+git switch main && git pull origin main
+git switch feat/你的名字
+
+git rebase main     # 方式 A：把你的提交「挪」到 main 最新提交之后，历史是一条直线
+# 或者
+git merge main      # 方式 B：多出一个「合并提交」，历史是分叉的
+```
+
+|              | `git rebase`           | `git merge`       |
+| ------------ | ---------------------- | ----------------- |
+| 提交历史     | 一条直线，干净         | 有分叉 + 合并提交 |
+| 是否改写历史 | **是**，提交哈希会变   | 否                |
+| 适用场景     | 只有你一个人在用的分支 | 多人共享的分支    |
+
+> 结论：**自己的作业分支用 rebase，公共分支（`main`）用 merge。** 反过来会很惨 —— 在 `main` 上 rebase 会让别人的本地分支全部失效。
+
+**冲突**：两种方式都可能报 `CONFLICT`。手动编辑文件里的 `<<<<<<<` / `=======` / `>>>>>>>` 标记后：
+
+- rebase 时：`git add <文件>` → `git rebase --continue`
+- merge 时：`git add <文件>` → `git commit`
+
+中途想放弃：`git rebase --abort` / `git merge --abort`，会回到操作前的状态。
 
 ### 2.5 `.gitignore`：别把编译产物传上去
 
@@ -589,56 +679,7 @@ int main() {
 
 ## 五、第一阶段作业
 
-### 5.1 题目
-
-> 写一个简单的**二维向量运算库**，支持：计算二维向量距离、模长、点乘、缩放。
-
-### 5.2 要求
-
-1. **git**：完成 `clone`、`commit`、`push`；提交信息符合 Conventional Commits。
-2. **CMake**：自己编写 `CMakeLists.txt`，用 `add_library` 把运算部分做成库，`add_executable` 做调用示例，用 `target_link_libraries` 链接。
-3. **功能**：四个接口全部正确，含边界情况（零向量、负向量、小数）。
-4. **规范**：头文件用 `#pragma once`；声明与实现分离；能通过 `-Wall -Wextra` 无警告编译。
-
-### 5.3 验收：评分表（满分 100）
-
-| 维度           | 分值 | 评分要点                                                                                  |
-| -------------- | ---- | ----------------------------------------------------------------------------------------- |
-| git 使用       | 20   | clone/push 成功；提交粒度合理（一个功能一次提交）；提交信息规范                           |
-| CMakeLists.txt | 25   | 结构清晰；正确使用 `add_library` / `add_executable` / `target_link_libraries`；构建出产物 |
-| 功能正确性     | 35   | 模长 / 距离 / 点乘 / 缩放结果正确，边界情况处理正确                                       |
-| 代码规范       | 10   | 命名统一、有无用代码、无警告编译                                                          |
-| 原理讲解       | 10   | 能讲清编译流程、链接的作用、CMake 各函数职责                                              |
-
-### 5.4 课堂演示的验收脚本
-
-```bash
-# 1. 克隆
-git clone <仓库地址> && cd vec2_demo
-
-# 2. 构建
-cmake -S . -B build && cmake --build build
-
-# 3. 运行并核对预期输出
-./build/vec2_demo
-# 预期：
-# |a|       = 5
-# dist(a,b) = 5
-# a·b       = 0
-# 2a        = (6, 8)
-
-# 4. 检查提交历史
-git log --oneline
-```
-
-### 5.5 验收时会被问到的问题（提前准备）
-
-1. `g++ main.cpp` 为什么报 `undefined reference`？怎么排查？
-2. 头文件和源文件分别放什么？为什么不能把函数体都写在头文件里？
-3. `add_library` 和 `add_executable` 有什么区别？为什么要把运算逻辑做成库？
-4. `target_include_directories` 里的 `PUBLIC` 换成 `PRIVATE` 会发生什么？
-5. 改了代码后第二次编译为什么比第一次快？
-6. 静态库和动态库的区别？各自适用场景？
+> 完整题目、要求、验收清单、验收脚本与答辩问题，见 [`homework_1.md`](homework_1.md)。
 
 ---
 
