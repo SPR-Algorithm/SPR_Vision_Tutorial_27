@@ -1,7 +1,7 @@
 #pragma once
 #include<vector>
 namespace rm{
-    using Vector = std::vector<double>
+    using Vector = std::vector<double>;
     using Matrix = std::vector<std::vector<double>>; 
     
     double length(const Vector& l);

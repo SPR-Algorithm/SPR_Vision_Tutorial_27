@@ -1,4 +1,4 @@
-#include "Vec2.hpp"
+#include "Vector2.hpp"
 #include<cmath>
 namespace rm{
     double length(const Vector& l){
@@ -11,12 +11,13 @@ namespace rm{
     double distance(const Vector& a,const Vector& b){
         if(length(a)!=length(b))
         return 0;
-
+    else{
         double sum=0.0;
         for(int i=0;i<a.size();i++)
-            sum+=((a[i]-b[i])*(a[i]-b[i]))
+            sum+=((a[i]-b[i])*(a[i]-b[i]));
         return std::sqrt(sum);
-    }  
+    }
+}  
 
     double dot(const Vector& a,const Vector& b){
         if(length(a)!=length(b))
@@ -41,7 +42,7 @@ namespace rm{
 
         Vector n;
         for(int i=0;i<l.size();i++)
-        n.push_back(l[i]/lengh(l));
+        n.push_back(l[i]/length(l));
         return n;
     }
 
@@ -51,11 +52,12 @@ namespace rm{
   
         if(length(a)!=length(b))
         return 0;
-    
+    else{
         double l1=length(a);
         double l2=length(b);
-        double T=dot(a,b)
-        double r=t/(l1*l2)
+        double T=dot(a,b);
+        double r=T/(l1*l2);
         return r;
     }
+}
 }
