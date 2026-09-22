@@ -20,7 +20,7 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
 endif()
 
 # ---- 库：作业要实现的就是它 ----
-add_library(rm_vector STATIC src/vector.cpp)
+add_library(rm_vector STATIC src/Vector.cpp)
 target_include_directories(rm_vector PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_compile_options(rm_vector PRIVATE ${HW1_WARNINGS})
 
