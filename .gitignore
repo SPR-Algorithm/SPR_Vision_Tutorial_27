@@ -30,3 +30,7 @@ tutorial_1/example/gpp/multi/app_broken
 tutorial_1/example/cmake/vec2_demo
 tutorial_2/example/opencv/armor_detect
 tutorial_2/example/opencv/result.png
+
+tutorial_1/build/
+*.o
+*.a
