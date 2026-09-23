@@ -1,11 +1,11 @@
 # 第二阶段培训：面向对象与 OpenCV
 
-| 项目     | 内容                                                                                                 |
-| -------- | ---------------------------------------------------------------------------------------------------- |
-| 教学目标 | 能用类和对象组织代码；用 OpenCV 传统方法从图像中识别装甲板并输出四个角点；把它封装成 ROS2 节点       |
-| 教学重点 | 类与对象、封装、构造函数/析构函数；`cv::Mat` 与图像处理流水线；灯条筛选与配对的几何约束              |
-| 教学难点 | 用类把「数据 + 行为」封装成可复用组件；装甲板识别中「灯条 → 配对 → 四点」的几何推理与打分            |
-| 考核方式 | 提交一个 ROS2 功能包：读 `/image_raw` 视频流 → 传统方法识别 → 发布四个角点；接口对齐 Daedalus 模拟器 |
+| 项目     | 内容                                                                                                                     |
+| -------- | ------------------------------------------------------------------------------------------------------------------------ |
+| 教学目标 | 能用类和对象组织代码；能用抽象基类 + 多态 + 工厂封装出可复用的组件；用 OpenCV 传统方法从图像中识别装甲板并输出四个角点   |
+| 教学重点 | 类与对象、封装、构造函数/析构函数、继承与多态；`cv::Mat` 与图像处理流水线；灯条筛选与配对的几何约束                      |
+| 教学难点 | 用类把「数据 + 行为」封装成可复用组件；装甲板识别中「灯条 → 配对 → 四点」的几何推理与打分                                |
+| 考核方式 | 提交一个相机类体系：抽象基类 `Camera` + `UsbCamera` / `IndustrialCamera` 两个派生类 + 工厂，并用基类引用统一调用所有相机 |
 
 ---
 
@@ -316,8 +316,12 @@ target_link_libraries(armor_detect PRIVATE ${OpenCV_LIBS})
 
 ```bash
 cmake -S . -B build && cmake --build build
-./build/armor_detect              # 直接跑，会生成一张合成测试图并识别
+./build/armor_detect              # 直接跑，读 demo/bule_armoe.jpg 并识别
 ```
+
+> 跑完会弹两个窗口：左边是「灰度 / 二值化 / 滤波」三格拼图，右边是识别结果；
+> 同时存下 `debug_stages.png`（中间过程）和 `result.png`（结果）。
+> 服务器 / 容器里没有显示环境时，用 `NO_WINDOW=1 ./build/armor_detect` 只存图不开窗。
 
 > 手写 g++ 也可以，但要写全路径太麻烦，所以 OpenCV 工程一律用 CMake：
 > `g++ $(pkg-config --cflags --libs opencv4) armor_detect.cpp -o armor_detect`
@@ -484,7 +488,10 @@ constexpr double SMALL_ARMOR_WIDTH = 135e-3;  // m，小装甲板宽度 -->
 
 ## 三、第二阶段作业
 
-> 完整题目、要求、验收清单、验收脚本与答辩问题，见 [`homework_2.md`](homework_2.md)。
+> 把「相机」抽象成一个类体系：抽象基类 + 工业相机 / USB 相机两个派生类 + 工厂，
+> 再写一段只认基类引用的调用代码——换相机时算法一行不用改。
+>
+> 完整题目、要求、验收清单与答辩问题，见 [`homework_2.md`](homework_2.md)。
 
 ---
 
@@ -502,7 +509,10 @@ constexpr double SMALL_ARMOR_WIDTH = 135e-3;  // m，小装甲板宽度 -->
 - OpenCV 官方文档 · 图像处理模块：https://docs.opencv.org/4.x/d7/dbd/group__imgproc.html
 - 传统装甲板识别参考思路（RoboMaster 社区大量开源实现可作对照）
 
-> ROS2 待更新，它落在[第二阶段作业](homework_2.md)里（ROS2 Humble + `rclcpp` +
-> `cv_bridge` + `rosidl` 自定义消息）。官方教程：https://docs.ros.org/en/humble/Tutorials.html
+**C++ 继承、多态与智能指针（补充）**
+
+- cppreference · 虚函数与虚析构：https://en.cppreference.com/w/cpp/language/virtual
+- cppreference · `std::unique_ptr`：https://en.cppreference.com/w/cpp/memory/unique_ptr
+- C++ Core Guidelines · 继承与多态（C.35 ~ C.67）：https://isocpp.github.io/CppCoreGuidelines/
 
 > 注：也可以适当参考 AI 进行学习，但要注意信息甄别，而且不要只让 AI 全程完成项目。

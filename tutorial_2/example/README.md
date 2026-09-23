@@ -1,6 +1,6 @@
 # 第二阶段配套实例
 
-两个例子，覆盖教案的**算法部分**；ROS2 工程部分看[第二阶段作业](../homework_2.md)。
+两个例子，覆盖教案的**算法部分**。
 
 | 示例                    | 目录      | 对应教案         | 依赖     | 本机验证                                |
 | ----------------------- | --------- | ---------------- | -------- | --------------------------------------- |
@@ -148,5 +148,5 @@ NO_WINDOW=1  ./build/armor_detect          # 不开窗口，只看终端和 resu
 
 ## 和后面阶段的衔接
 
-- `oop/camera_class.cpp` 里的 `Camera` 抽象基类，就是第三阶段 `io` 层 `Camera / USBCamera` 的原型。
-- `armor_detect.cpp` 里 `detectArmor()` 的输入是 `cv::Mat`、输出是四个点，**不依赖任何框架**。第二阶段作业就是把它搬进 ROS2 节点：外面套一层「订阅 `/image_raw` → `cv_bridge` 转换 → 调用 → 发布 `/armor_detector/detections` + `/armor_detector/debug_image`」，算法本身一行不用改。
+- `oop/camera_class.cpp` 里的 `Camera` 抽象基类，是第三阶段自瞄工程 `io` 层 `Camera / USBCamera` 的原型。
+- `armor_detect.cpp` 里 `detectArmor()` 的输入是 `cv::Mat`、输出是四个点，**不依赖任何框架**。第三阶段（[`tutorial_3`](../../tutorial_3/tutorial_3.md)）会把它搬进 ROS2 节点：外面套一层「订阅 `/image_raw` → `cv_bridge` 转换 → 调用 → 发布 `/armor_detector/detections` + `/armor_detector/debug_image`」，算法本身一行不用改。
