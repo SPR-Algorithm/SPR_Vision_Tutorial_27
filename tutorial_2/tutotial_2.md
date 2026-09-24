@@ -13,15 +13,19 @@
 
 `tutorial_2/example/` 下按知识点分目录，目录里就是上课要展示的真实代码：
 
-| 示例                    | 目录              | 对应教案         | 上课怎么跑                                                            |
-| ----------------------- | ----------------- | ---------------- | --------------------------------------------------------------------- |
-| OpenCV · 装甲板四点识别 | `example/opencv/` | 一、OpenCV       | `cmake -S . -B build && cmake --build build && ./build/armor_detect`  |
+| 示例                    | 目录                             | 对应教案              | 上课怎么跑                                                                     |
+| ----------------------- | -------------------------------- | --------------------- | ------------------------------------------------------------------------------ |
+| OpenCV · 基础 API 速览  | `example/opencv/opencv_basics.*` | 一、OpenCV（1.1~1.3） | `cmake --build build && ./build/opencv_basics`　或　`python3 opencv_basics.py` |
+| OpenCV · 装甲板四点识别 | `example/opencv/`                | 一、OpenCV（1.4）     | `cmake -S . -B build && cmake --build build && ./build/armor_detect`           |
 
 依赖安装、完整命令与预期输出见 `example/README.md`。
 
 ---
 
 ## 一、OpenCV
+
+> **配套阅读**：[`example/opencv/opencv_intro.md`](example/opencv/opencv_intro.md) —— 下面 1.1~1.3 的「API 手册版」：滤波 / 二值化 / 边缘 / 形态学 / 轮廓等常用函数的 C++ 与 Python 对照、参数经验、常见坑。
+> **配套可跑**：[`example/opencv/opencv_basics.cpp`](example/opencv/opencv_basics.cpp) / [`opencv_basics.py`](example/opencv/opencv_basics.py) —— 一次跑完 10 组 API，输出三张对比拼图。
 
 ### 1.1 OpenCV 是什么、`cv::Mat` 是什么
 

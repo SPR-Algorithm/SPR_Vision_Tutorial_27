@@ -1,18 +1,23 @@
 # 第二阶段配套实例
 
-一个例子，覆盖教案的**算法部分**。
+`opencv/` 一个目录，覆盖教案的**算法部分**：先过一遍基础 API，再串成装甲板识别。
 
-| 示例                    | 目录      | 对应教案   | 依赖   | 本机验证                                |
-| ----------------------- | --------- | ---------- | ------ | --------------------------------------- |
-| OpenCV · 装甲板四点识别 | `opencv/` | 一、OpenCV | OpenCV | ✅ 已在 `demo/bule_armoe.jpg` 上实测通过 |
+| 示例                    | 目录                                   | 对应教案              | 依赖   | 本机验证                                |
+| ----------------------- | -------------------------------------- | --------------------- | ------ | --------------------------------------- |
+| OpenCV · 基础 API 速览  | `opencv/opencv_basics.cpp` / `.py`     | 一、OpenCV（1.1~1.3） | OpenCV | ✅ C++ / Python 均已实跑通过            |
+| OpenCV · 装甲板四点识别 | `opencv/`                              | 一、OpenCV（1.4）     | OpenCV | ✅ 已在 `demo/bule_armoe.jpg` 上实测通过 |
 
 ```
 example/
 └── opencv/
     ├── CMakeLists.txt
+    ├── opencv_intro.md               培训简介：OpenCV 功能 + 常用 API + 调参经验
+    ├── opencv_basics.cpp             基础 API 速览（C++），一次跑完 10 组 API
+    ├── opencv_basics.py              同上，Python 版（调参更快）
     ├── armor_detect.cpp              传统方法识别装甲板，输出四个角点
     └── demo/
         ├── bule_armoe.jpg            演示图（蓝色灯条装甲板）
+        ├── blue_5.png                演示图（蓝色 5 号装甲板）
         └── demo.mp4                  录像素材（544×960 / 30fps / 173s）
 ```
 
@@ -23,7 +28,52 @@ example/
 
 ---
 
-## ① OpenCV · 装甲板四点识别
+## ① OpenCV · 基础 API 速览
+
+先读 [`opencv_intro.md`](opencv_intro.md)（培训简介：每个 API 干什么、参数怎么调），
+再跑 `opencv_basics` 把效果看一眼。这一步不做识别，只建立「哪个 API 干什么」的直觉。
+
+```bash
+cd example/opencv
+
+# C++（走已有的 CMake 工程）
+cmake -S . -B build && cmake --build build
+./build/opencv_basics                     # 默认读 demo/bule_armoe.jpg
+./build/opencv_basics demo/blue_5.png     # 换成自己的图
+NO_WINDOW=1 ./build/opencv_basics         # 不开窗，只存图
+
+# Python（不用编译，改完直接跑，调参首选）
+pip install opencv-python numpy
+python3 opencv_basics.py
+```
+
+一次跑完 10 组 API：读图/元信息 → 灰度化 → 滤波 → 二值化 → 颜色分割 → 形态学 → 边缘检测 → 轮廓 → 几何变换 → 绘制。
+终端打印每一步的耗时与统计量，目录里留下三张对比拼图：
+
+| 拼图                         | 内容                                               |
+| ---------------------------- | -------------------------------------------------- |
+| `opencv_basics_1_filter.png` | 4 种滤波 + 固定阈值 / OTSU / 自适应阈值            |
+| `opencv_basics_2_edge.png`   | 4 种形态学 + Sobel / Laplacian / Canny             |
+| `opencv_basics_3_misc.png`   | 颜色分割 + 轮廓 + 旋转 / 透视 + 绘制                 |
+
+实测（`demo/bule_armoe.jpg`，1279×1706，OpenCV 5.0）节选：
+
+```
+【4】二值化 threshold / THRESH_OTSU / adaptiveThreshold
+  OTSU 自动算出的阈值 = 113（本次固定阈值用的是 150）
+  白像素占比：固定 27.51%   OTSU 39.13%   自适应均值 80.72%   自适应高斯 86.54%
+
+【7】边缘检测 Sobel / Laplacian / Canny
+  二值边缘（Canny）像素占比：阈值(50,150) → 3.04%   阈值(100,200) → 1.62%
+
+【8】轮廓 findContours + 面积/外接矩形筛选
+    #4 面积=18058 正矩形=88×376 旋转矩形=379×55 角度=-83.4° 长宽比=6.85   ← 灯条！
+    #5 面积=16187 正矩形=84×365 旋转矩形=49×368 角度=-6.6° 长宽比=7.49   ← 灯条！
+```
+
+> 最后两行就是下一节要用的**灯条**：长宽比 6.85 / 7.49，和 `armor_detect` 筛出来的完全一致。
+
+## ② OpenCV · 装甲板四点识别
 
 ### 装依赖
 
