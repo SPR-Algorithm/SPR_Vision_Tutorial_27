@@ -118,5 +118,4 @@ double angleBetween(const Vector& a, const Vector& b) {
     return std::acos(cosine);
 }
 
-
 }
