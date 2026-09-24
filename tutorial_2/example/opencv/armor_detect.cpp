@@ -1,25 +1,20 @@
 // ============================================================================
-// 知识点 2 · OpenCV —— 用传统方法识别装甲板
-// 对应教案：二、OpenCV（2.2 最小 CMake 工程 / 2.4 用传统方法识别装甲板）
+// 知识点 1 · OpenCV —— 用传统方法识别装甲板
+// 对应教案：一、OpenCV（1.2 环境搭建与最小 CMake 工程 / 1.4 用传统方法识别装甲板）
 //
-// 上课时执行：
 //   cd example/opencv
 //   cmake -S . -B build && cmake --build build
 //   ./build/armor_detect                       # 默认读 demo/bule_armoe.jpg
 //   ./build/armor_detect my_armor.png          # 也可以喂自己的图
 //   DEBUG_PAIRS=1 ./build/armor_detect         # 打印所有候选配对及其得分
-//   NO_WINDOW=1  ./build/armor_detect          # 不开窗口，只存 result.png
+//   NO_WINDOW=1  ./build/armor_detect          # 不开窗口，只存图片
 //
-// 识别流水线（讲师按这个顺序讲）：
 //   灰度 → 二值化(OTSU) → 形态学开运算 → findContours
 //        → 灯条筛选（长宽比 / 长短粗细）
 //        → 灯条配对（间距 / 上下端对齐 / 高度相近 / 宽高比）
 //        → 打分取最优 → 输出装甲板【四个角点】
-//
 // 输出的这四个点（左上 / 右上 / 右下 / 左下）就是本节的最终成果，
-// 后面做位姿解算（solvePnP）时直接喂进去就行。
 //
-// 视频部分暂时不做：那涉及整车建模观测与坐标系转换，属于后面的内容。
 // ============================================================================
 
 #include <algorithm>
@@ -63,6 +58,9 @@ struct Armor {
 struct DetectResult {
   Armor armor;
   std::vector<LightBar> light_bars; // 所有通过筛选的候选灯条（画出来看更直观）
+  cv::Mat gray;                     // ① 灰度图
+  cv::Mat binary;                   // ② 二值化（OTSU）后
+  cv::Mat opened;                   // ③ 滤波（形态学开运算）后
 };
 
 // 真实装甲板的「灯条中心距 / 灯条高度」大约在 2.2 ~ 2.8 之间
@@ -200,10 +198,18 @@ DetectResult detectArmor(const cv::Mat &bgr) {
   // ③ 形态学开运算：去掉小噪点
   const cv::Mat kernel =
       cv::getStructuringElement(cv::MORPH_RECT, cv::Size(3, 3));
-  cv::morphologyEx(binary, binary, cv::MORPH_OPEN, kernel);
+  cv::Mat opened;
+  cv::morphologyEx(binary, opened, cv::MORPH_OPEN, kernel);
+
+  // 三步的中间结果都留在 result 里，后面拼成一张图显示
+  result.gray = gray;
+  result.binary = binary;
+  result.opened = opened;
 
   // ④⑤ 找轮廓 + 筛灯条
-  result.light_bars = findLightBars(binary, bgr.size());
+  //  注意：喂进去的是【滤波后】的图，二值化原图只用来显示 ——
+  //  开运算抹掉了细碎噪点，轮廓质量比直接用二值图好
+  result.light_bars = findLightBars(opened, bgr.size());
 
   // ⑥ 两两配对，留得分最高的那一组
   float best_score = -1e9f;
@@ -227,36 +233,6 @@ DetectResult detectArmor(const cv::Mat &bgr) {
     }
   }
   return result;
-}
-
-// ---------------------------------------------------------------------------
-// 内置合成测试图：不用准备素材，装好 OpenCV 就能演示
-// ---------------------------------------------------------------------------
-cv::Mat makeSyntheticArmor(int width, int height) {
-  cv::Mat img(height, width, CV_8UC3, cv::Scalar(40, 40, 40));
-
-  const int cx = width / 2;
-  const int cy = height / 2;
-
-  // 真正的装甲板：两条平行灯条，中心距 200px，高约 89px → 宽高比 ≈ 2.25
-  cv::rectangle(img, cv::Rect(cx - 107, cy - 75, 14, 90),
-                cv::Scalar(235, 235, 235), cv::FILLED);
-  cv::rectangle(img, cv::Rect(cx + 93, cy - 73, 14, 88),
-                cv::Scalar(235, 235, 235), cv::FILLED);
-
-  // 干扰 1：方片，长宽比 ≈ 1.0 → 会被灯条筛选挡掉
-  cv::rectangle(img, cv::Rect(cx + 240, cy + 100, 80, 60),
-                cv::Scalar(210, 210, 210), cv::FILLED);
-
-  // 干扰 2：圆形，长宽比 ≈ 1.0 → 也会被挡掉
-  cv::circle(img, cv::Point(cx - 260, cy - 150), 28, cv::Scalar(200, 200, 200),
-             cv::FILLED);
-
-  // 干扰 3：孤零零一根短灯条，能通过筛选但找不到配对对象
-  cv::rectangle(img, cv::Rect(cx + 300, cy - 60, 13, 40),
-                cv::Scalar(230, 230, 230), cv::FILLED);
-
-  return img;
 }
 
 // ---------------------------------------------------------------------------
@@ -315,6 +291,78 @@ void drawResult(cv::Mat &img, const DetectResult &result) {
               thickness);
 }
 
+// ---------------------------------------------------------------------------
+// 把「灰度 → 二值化 → 滤波」三张中间图横着拼成一张
+// 每格都等比缩放到同样宽度，拼起来才不会一大一小
+// 注意：图里写的字只能用 ASCII —— Hershey 字体画不了中文，会变成一串问号
+// ---------------------------------------------------------------------------
+cv::Mat makeStageCanvas(const DetectResult &result, int tile_width = 480) {
+  const cv::Mat stages[3] = {result.gray, result.binary, result.opened};
+  const char *titles[3] = {"(1) gray", "(2) threshold (OTSU)",
+                           "(3) morphology OPEN"};
+
+  std::vector<cv::Mat> tiles;
+  for (int i = 0; i < 3; ++i) {
+    if (stages[i].empty())
+      continue; // 没跑到这一步就跳过
+
+    // 单通道图（灰度 / 二值）先转成 3 通道，才能和彩色图拼在一起
+    cv::Mat tile;
+    if (stages[i].channels() == 1) {
+      cv::cvtColor(stages[i], tile, cv::COLOR_GRAY2BGR);
+    } else {
+      tile = stages[i].clone();
+    }
+
+    // 统缩放到 tile_width 宽（本来就比它小就不放大，免得糊）
+    const double scale = static_cast<double>(tile_width) / tile.cols;
+    if (scale < 1.0) {
+      cv::resize(tile, tile, cv::Size(), scale, scale, cv::INTER_AREA);
+    }
+
+    // 顶部留 28 像素黑边写步骤名，免得和图像内容混在一起看不清
+    cv::Mat labeled(tile.rows + 28, tile.cols, CV_8UC3, cv::Scalar(0, 0, 0));
+    tile.copyTo(labeled(cv::Rect(0, 28, tile.cols, tile.rows)));
+    cv::putText(labeled, titles[i], cv::Point(8, 20), cv::FONT_HERSHEY_SIMPLEX,
+                0.6, cv::Scalar(0, 255, 255), 1, cv::LINE_AA);
+    tiles.push_back(labeled);
+  }
+
+  if (tiles.empty())
+    return cv::Mat();
+
+  cv::Mat canvas;
+  cv::hconcat(tiles, canvas);
+  return canvas;
+}
+
+// ---------------------------------------------------------------------------
+// 保存 + 显示中间过程图
+// NO_WINDOW=1 时只存图不开窗（服务器 / 容器里没有显示环境）
+// ---------------------------------------------------------------------------
+void showStages(const cv::Mat &stage_canvas, const cv::Mat &result_canvas) {
+  if (stage_canvas.empty())
+    return;
+
+  cv::imwrite("debug_stages.png", stage_canvas);
+  std::cout << "中间过程图已保存为 debug_stages.png（灰度 / 二值化 / 滤波）\n";
+
+  if (std::getenv("NO_WINDOW") != nullptr)
+    return;
+
+  // 服务器 / 容器里没有显示环境，开窗会抛异常，catch 住别让程序直接挂掉
+  try {
+    cv::imshow("stages: 1 gray | 2 binary | 3 filtered", stage_canvas);
+    cv::imshow("armor_detect", result_canvas);
+    std::cout << "显示中间过程图与识别结果，按任意键关闭窗口...\n";
+    cv::waitKey(0);
+    cv::destroyAllWindows();
+  } catch (const cv::Exception &e) {
+    std::cout
+        << "（当前环境开不了窗口，看 debug_stages.png / result.png 即可）\n";
+  }
+}
+
 } // namespace
 
 // ---------------------------------------------------------------------------
@@ -324,13 +372,14 @@ int runImage(const std::string &source) {
   cv::Mat img = cv::imread(source); // 注意：读失败不报错，只返回空 Mat
 
   if (img.empty()) {
-    std::cout << "没找到 " << source << "，改用内置合成测试图 800x600\n";
-    std::cout << "内容：装甲板（两灯条）+ 方片 + 圆 + 一根孤立灯条\n";
-    img = makeSyntheticArmor(800, 600);
-  } else {
-    std::cout << "已读入 " << source << "（" << img.cols << "x" << img.rows
-              << "）\n";
+    std::cerr << "读不到图片：" << source << "\n"
+              << "用法：./armor_detect [图片路径]，不带参数默认读 "
+                 "demo/bule_armoe.jpg\n";
+    return 1;
   }
+
+  std::cout << "已读入 " << source << "（" << img.cols << "x" << img.rows
+            << "）\n";
 
   const DetectResult result = detectArmor(img);
 
@@ -367,15 +416,9 @@ int runImage(const std::string &source) {
   cv::imwrite("result.png", canvas);
   std::cout << "结果图已保存为 result.png\n";
 
-  // 服务器 / 容器里没有显示环境，用 NO_WINDOW=1 跳过开窗
-  if (std::getenv("NO_WINDOW") == nullptr) {
-    try {
-      cv::imshow("armor_detect", canvas);
-      cv::waitKey(0);
-    } catch (const cv::Exception &e) {
-      std::cout << "（当前环境开不了窗口，看 result.png 即可）\n";
-    }
-  }
+  // 灰度 / 二值化 / 滤波 三张中间图：保存 + 开窗显示（NO_WINDOW=1 只保存）
+  showStages(makeStageCanvas(result), canvas);
+
   return 0;
 }
 
