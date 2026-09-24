@@ -1,10 +1,10 @@
-# 第二阶段培训：面向对象与 OpenCV
+# 第二阶段培训：OpenCV 与面向对象
 
 | 项目     | 内容                                                                                                                     |
 | -------- | ------------------------------------------------------------------------------------------------------------------------ |
-| 教学目标 | 能用类和对象组织代码；能用抽象基类 + 多态 + 工厂封装出可复用的组件；用 OpenCV 传统方法从图像中识别装甲板并输出四个角点   |
-| 教学重点 | 类与对象、封装、构造函数/析构函数、继承与多态；`cv::Mat` 与图像处理流水线；灯条筛选与配对的几何约束                      |
-| 教学难点 | 用类把「数据 + 行为」封装成可复用组件；装甲板识别中「灯条 → 配对 → 四点」的几何推理与打分                                |
+| 教学目标 | 用 OpenCV 传统方法从图像中识别装甲板并输出四个角点；能用类和对象组织代码；能用抽象基类 + 多态 + 工厂封装出可复用的组件   |
+| 教学重点 | `cv::Mat` 与图像处理流水线；灯条筛选与配对的几何约束；类与对象、封装、构造函数/析构函数、继承与多态                      |
+| 教学难点 | 装甲板识别中「灯条 → 配对 → 四点」的几何推理与打分；用类把「数据 + 行为」封装成可复用组件                                |
 | 考核方式 | 提交一个相机类体系：抽象基类 `Camera` + `UsbCamera` / `IndustrialCamera` 两个派生类 + 工厂，并用基类引用统一调用所有相机 |
 
 ---
@@ -15,237 +15,15 @@
 
 | 示例                    | 目录              | 对应教案         | 上课怎么跑                                                            |
 | ----------------------- | ----------------- | ---------------- | --------------------------------------------------------------------- |
-| 面向对象 · 相机类       | `example/oop/`    | 一、C++ 面向对象 | `g++ -std=c++17 -Wall -Wextra camera_class.cpp -o camera && ./camera` |
-| OpenCV · 装甲板四点识别 | `example/opencv/` | 二、OpenCV       | `cmake -S . -B build && cmake --build build && ./build/armor_detect`  |
+| OpenCV · 装甲板四点识别 | `example/opencv/` | 一、OpenCV       | `cmake -S . -B build && cmake --build build && ./build/armor_detect`  |
 
 依赖安装、完整命令与预期输出见 `example/README.md`。
 
 ---
 
-## 一、C++ 面向对象
+## 一、OpenCV
 
-### 1.1 从「一堆函数」到「一个对象」
-
-第一阶段我们是这样写向量库的：
-
-```cpp
-struct Vec2 { double x = 0.0; double y = 0.0; };
-double length(const Vec2& v);          // 数据和行为是分开的
-```
-
-能用，但有两个问题：
-
-1. **数据不被保护**：没人拦得住你写 `Vec2 v{1e308, 1e308}`，或者把 `x` 改成非法值。
-2. **改一处要动全身**：如果以后「向量」变成了必须在极坐标下表示，所有调用 `v.x` 的代码都得改。
-
-面向对象要做的第一件事，就是把**数据和行为绑定在一起，并把数据保护起来**。
-
-### 1.2 类与对象
-
-**概念**
-
-| 术语            | 含义                                           |
-| --------------- | ---------------------------------------------- |
-| 类（class）     | 类型，是「图纸」                               |
-| 对象（object）  | 类的实例，是「按图纸造出来的东西」             |
-| 成员变量        | 对象的状态（数据）                             |
-| 成员函数 / 方法 | 对象能做的事（行为）                           |
-| `this`          | 指向「当前这个对象」的指针，成员函数里隐式可用 |
-
-`struct` 和 `class` 在 C++ 里**唯一的区别是默认访问权限**：`struct` 默认 `public`，`class` 默认 `private`。所以第一阶段写的 `struct Vec2` 其实已经是一个类了。
-
-**最小实例**
-
-```cpp
-class Vec2 {
-public:
-    Vec2(double x, double y) : x_(x), y_(y) {}   // 构造函数：造对象时自动调用
-
-    double x() const { return x_; }              // getter：只读
-    double y() const { return y_; }
-    double length() const;                       // 行为和数据放在一起
-    void   scale(double k);                      // 修改状态
-
-private:
-    double x_ = 0.0;                             // 成员变量加 _ 后缀，和参数区分
-    double y_ = 0.0;
-};
-
-double Vec2::length() const {
-    return std::sqrt(x_ * x_ + y_ * y_);
-}
-
-void Vec2::scale(double k) {
-    x_ *= k;
-    y_ *= k;
-}
-```
-
-```cpp
-Vec2 v{3.0, 4.0};        // 栈上创建对象，自动调用构造函数
-std::cout << v.length(); // 5
-v.scale(2.0);            // 通过方法改状态
-// v.x_ = 999;           // ❌ 编译错误：private，外部碰不到
-```
-
-> **`const` 写在函数后面** = 「这个函数不修改对象状态」。养成习惯，读接口的人一眼就知道哪些操作有副作用。带 `const` 的成员函数才能被 `const` 对象调用。
-
-### 1.3 封装：构造函数、析构函数、访问控制
-
-**三个访问级别**
-
-| 关键字      | 谁能访问     | 什么时候用                           |
-| ----------- | ------------ | ------------------------------------ |
-| `public`    | 所有人       | 对外接口（想让人怎么用，就暴露什么） |
-| `protected` | 自己和派生类 | 想给子类用、但不给外人用             |
-| `private`   | 只有自己     | 内部状态，默认都放这儿               |
-
-**构造函数 / 析构函数**
-
-```cpp
-class Camera {
-public:
-    explicit Camera(int id) : id_(id) {          // 构造函数：初始化
-        std::cout << "Camera#" << id_ << " 构造\n";
-    }
-
-    ~Camera() {                                  // 析构函数：释放资源
-        close();                                 // 保证「谁申请、谁释放」
-        std::cout << "Camera#" << id_ << " 析构\n";
-    }
-
-    void close() { opened_ = false; }
-
-private:
-    int  id_ = 0;
-    bool opened_ = false;
-};
-```
-
-`explicit` 防止 `Camera c = 3;` 这种隐式转换悄悄发生——单参数构造函数建议都加上。
-
-**对象生命周期（RAII）**：对象在作用域结束时自动析构，所以「构造函数里拿资源、析构函数里放资源」是 C++ 最核心的编程范式。你不需要手写 `free()`，也不该忘。
-
-### 1.4 继承与多态
-
-**概念**
-
-- **继承**：`class UsbCamera : public Camera` —— 「USB 相机**是**一种相机」。
-- **多态**：用基类指针/引用调用，运行期自动执行到派生类的实现。
-- **虚函数**：`virtual` 标记「这个函数允许被派生类改写」。
-- **纯虚函数**：`= 0`，只声明不实现，含纯虚函数的类叫**抽象基类**，不能实例化。
-- **虚析构**：基类的析构函数必须是 `virtual`，否则 `delete` 基类指针时派生类的析构不会被调用（资源泄漏）。
-
-**最小实例**
-
-```cpp
-class Camera {
-public:
-    virtual ~Camera() = default;      // ⚠ 基类析构必须虚
-    virtual bool open() = 0;          // 纯虚函数 → Camera 不能被实例化
-    virtual bool read(Frame& out) = 0;
-    virtual std::string name() const = 0;
-};
-
-class UsbCamera : public Camera {
-public:
-    bool open() override { /* 打开 /dev/video0 */ return true; }
-    bool read(Frame& out) override { /* 取一帧 */ return true; }
-    std::string name() const override { return "UsbCamera"; }
-};
-
-class IndustrialCamera : public Camera {
-public:
-    bool open() override { /* 走 SDK */ return true; }
-    bool read(Frame& out) override { /* 取一帧 */ return true; }
-    std::string name() const override { return "IndustrialCamera"; }
-};
-```
-
-```cpp
-// 使用方：完全不关心具体是哪种相机
-void runOnce(Camera& cam) {
-    Frame frame;
-    if (cam.read(frame)) {          // 多态：运行期决定调谁
-        std::cout << cam.name() << " 出图\n";
-    }
-}
-```
-
-`override` 关键字不是必须的，但**强烈建议写**：写错函数签名时编译器会直接报错，而不是默默变成「另一个新函数」。
-
-### 1.5 基于相机类的开发（本阶段重点）
-
-**为什么要抽象一层**
-
-第三阶段的自瞄工程里，`io` 层就是 `Camera / USBCamera`。原因很实际：
-
-- 算法（识别装甲板）只想说「给我一帧图」，不关心图是从工业相机、USB 相机还是录像文件来的。
-- 换硬件时只改一个工厂函数，算法代码一行不动。
-- 测试时可以塞一个「假相机」进去，不用真的插硬件。
-
-```mermaid
-flowchart LR
-    A[算法层<br/>ArmorDetector] -->|只要 Frame| I[接口<br/>Camera 抽象基类]
-    I --> U[UsbCamera]
-    I --> N[IndustrialCamera]
-    I --> R[ReplayCamera<br/>读录像做回归测试]
-```
-
-**最小实例结构**
-
-```cpp
-// 1. 抽象基类：定义「相机应该会做什么」
-class Camera {
-public:
-    virtual ~Camera() = default;
-    virtual bool open() = 0;
-    virtual bool read(Frame& out) = 0;
-    virtual void close() = 0;
-    virtual std::string name() const = 0;
-};
-
-// 2. 工厂：把「配置里的字符串」翻译成「具体对象」
-std::unique_ptr<Camera> makeCamera(const std::string& type, int id) {
-    if (type == "usb")        return std::make_unique<UsbCamera>(id);
-    if (type == "industrial") return std::make_unique<IndustrialCamera>(id);
-    return nullptr;
-}
-
-// 3. 使用方：多态调用
-int main() {
-    std::vector<std::unique_ptr<Camera>> cameras;
-    cameras.push_back(makeCamera("usb", 0));
-    cameras.push_back(makeCamera("industrial", 1));
-
-    for (auto& cam : cameras) {          // unique_ptr 独占所有权，不需要手动 delete
-        if (!cam->open()) continue;
-        Frame frame;
-        if (cam->read(frame)) {
-            std::cout << cam->name() << " 出图："
-                      << frame.width << "x" << frame.height << '\n';
-        }
-        cam->close();
-    }
-}
-```
-
-完整可运行版本：`example/oop/camera_class.cpp`（不依赖 OpenCV，纯 C++ 直接 `g++` 就能编）。
-
-**常见坑**
-
-- **基类析构不是虚的**：`delete` 基类指针时派生类的析构不执行。只要类里有 `virtual` 函数，析构函数就写上 `virtual`。
-- **对象切片**：`Camera c = usbCamera;` 会把派生部分切掉，只剩基类。要用**指针或引用**（`Camera&` / `std::unique_ptr<Camera>`）。
-- **构造函数里调虚函数无效**：构造基类时派生类还没初始化完，此时调用会落到基类版本。
-- **`new` 之后忘了 `delete`**：优先用 `std::unique_ptr` / `std::make_unique`。
-- **继承滥用**：`class Armor : public Camera` 这种「不是一种」的关系应该用**组合**（成员变量），不是继承。
-- **头文件里定义类**时记得 `#pragma once`，且成员函数若写在类内即隐式 `inline`。
-
----
-
-## 二、OpenCV
-
-### 2.1 OpenCV 是什么、`cv::Mat` 是什么
+### 1.1 OpenCV 是什么、`cv::Mat` 是什么
 
 **概念**
 
@@ -288,7 +66,7 @@ int main() {
 }
 ```
 
-### 2.2 环境搭建与最小 CMake 工程
+### 1.2 环境搭建与最小 CMake 工程
 
 ```bash
 # Ubuntu 22.04
@@ -326,7 +104,7 @@ cmake -S . -B build && cmake --build build
 > 手写 g++ 也可以，但要写全路径太麻烦，所以 OpenCV 工程一律用 CMake：
 > `g++ $(pkg-config --cflags --libs opencv4) armor_detect.cpp -o armor_detect`
 
-### 2.3 图像处理基本流程
+### 1.3 图像处理基本流程
 
 自瞄里 90% 的传统视觉代码都是这五步的组合：
 
@@ -360,7 +138,7 @@ cv::inRange(hsv, cv::Scalar(160, 100, 100), cv::Scalar(180, 255, 255), m2);
 cv::bitwise_or(m1, m2, mask);
 ```
 
-### 2.4 用传统方法识别装甲板
+### 1.4 用传统方法识别装甲板
 
 **整体思路**：装甲板由**两条平行灯条**构成，所以先找灯条，再把灯条两两配对，最后用配对成功那两条灯条的端点组成装甲板的**四个角点**。
 
@@ -486,6 +264,227 @@ constexpr double SMALL_ARMOR_WIDTH = 135e-3;  // m，小装甲板宽度 -->
 
 ---
 
+## 二、C++ 面向对象
+
+### 2.1 从「一堆函数」到「一个对象」
+
+第一阶段我们是这样写向量库的：
+
+```cpp
+struct Vec2 { double x = 0.0; double y = 0.0; };
+double length(const Vec2& v);          // 数据和行为是分开的
+```
+
+能用，但有两个问题：
+
+1. **数据不被保护**：没人拦得住你写 `Vec2 v{1e308, 1e308}`，或者把 `x` 改成非法值。
+2. **改一处要动全身**：如果以后「向量」变成了必须在极坐标下表示，所有调用 `v.x` 的代码都得改。
+
+面向对象要做的第一件事，就是把**数据和行为绑定在一起，并把数据保护起来**。
+
+### 2.2 类与对象
+
+**概念**
+
+| 术语            | 含义                                           |
+| --------------- | ---------------------------------------------- |
+| 类（class）     | 类型，是「图纸」                               |
+| 对象（object）  | 类的实例，是「按图纸造出来的东西」             |
+| 成员变量        | 对象的状态（数据）                             |
+| 成员函数 / 方法 | 对象能做的事（行为）                           |
+| `this`          | 指向「当前这个对象」的指针，成员函数里隐式可用 |
+
+`struct` 和 `class` 在 C++ 里**唯一的区别是默认访问权限**：`struct` 默认 `public`，`class` 默认 `private`。所以第一阶段写的 `struct Vec2` 其实已经是一个类了。
+
+**最小实例**
+
+```cpp
+class Vec2 {
+public:
+    Vec2(double x, double y) : x_(x), y_(y) {}   // 构造函数：造对象时自动调用
+
+    double x() const { return x_; }              // getter：只读
+    double y() const { return y_; }
+    double length() const;                       // 行为和数据放在一起
+    void   scale(double k);                      // 修改状态
+
+private:
+    double x_ = 0.0;                             // 成员变量加 _ 后缀，和参数区分
+    double y_ = 0.0;
+};
+
+double Vec2::length() const {
+    return std::sqrt(x_ * x_ + y_ * y_);
+}
+
+void Vec2::scale(double k) {
+    x_ *= k;
+    y_ *= k;
+}
+```
+
+```cpp
+Vec2 v{3.0, 4.0};        // 栈上创建对象，自动调用构造函数
+std::cout << v.length(); // 5
+v.scale(2.0);            // 通过方法改状态
+// v.x_ = 999;           // ❌ 编译错误：private，外部碰不到
+```
+
+> **`const` 写在函数后面** = 「这个函数不修改对象状态」。养成习惯，读接口的人一眼就知道哪些操作有副作用。带 `const` 的成员函数才能被 `const` 对象调用。
+
+### 2.3 封装：构造函数、析构函数、访问控制
+
+**三个访问级别**
+
+| 关键字      | 谁能访问     | 什么时候用                           |
+| ----------- | ------------ | ------------------------------------ |
+| `public`    | 所有人       | 对外接口（想让人怎么用，就暴露什么） |
+| `protected` | 自己和派生类 | 想给子类用、但不给外人用             |
+| `private`   | 只有自己     | 内部状态，默认都放这儿               |
+
+**构造函数 / 析构函数**
+
+```cpp
+class Camera {
+public:
+    explicit Camera(int id) : id_(id) {          // 构造函数：初始化
+        std::cout << "Camera#" << id_ << " 构造\n";
+    }
+
+    ~Camera() {                                  // 析构函数：释放资源
+        close();                                 // 保证「谁申请、谁释放」
+        std::cout << "Camera#" << id_ << " 析构\n";
+    }
+
+    void close() { opened_ = false; }
+
+private:
+    int  id_ = 0;
+    bool opened_ = false;
+};
+```
+
+`explicit` 防止 `Camera c = 3;` 这种隐式转换悄悄发生——单参数构造函数建议都加上。
+
+**对象生命周期（RAII）**：对象在作用域结束时自动析构，所以「构造函数里拿资源、析构函数里放资源」是 C++ 最核心的编程范式。你不需要手写 `free()`，也不该忘。
+
+### 2.4 继承与多态
+
+**概念**
+
+- **继承**：`class UsbCamera : public Camera` —— 「USB 相机**是**一种相机」。
+- **多态**：用基类指针/引用调用，运行期自动执行到派生类的实现。
+- **虚函数**：`virtual` 标记「这个函数允许被派生类改写」。
+- **纯虚函数**：`= 0`，只声明不实现，含纯虚函数的类叫**抽象基类**，不能实例化。
+- **虚析构**：基类的析构函数必须是 `virtual`，否则 `delete` 基类指针时派生类的析构不会被调用（资源泄漏）。
+
+**最小实例**
+
+```cpp
+class Camera {
+public:
+    virtual ~Camera() = default;      // ⚠ 基类析构必须虚
+    virtual bool open() = 0;          // 纯虚函数 → Camera 不能被实例化
+    virtual bool read(Frame& out) = 0;
+    virtual std::string name() const = 0;
+};
+
+class UsbCamera : public Camera {
+public:
+    bool open() override { /* 打开 /dev/video0 */ return true; }
+    bool read(Frame& out) override { /* 取一帧 */ return true; }
+    std::string name() const override { return "UsbCamera"; }
+};
+
+class IndustrialCamera : public Camera {
+public:
+    bool open() override { /* 走 SDK */ return true; }
+    bool read(Frame& out) override { /* 取一帧 */ return true; }
+    std::string name() const override { return "IndustrialCamera"; }
+};
+```
+
+```cpp
+// 使用方：完全不关心具体是哪种相机
+void runOnce(Camera& cam) {
+    Frame frame;
+    if (cam.read(frame)) {          // 多态：运行期决定调谁
+        std::cout << cam.name() << " 出图\n";
+    }
+}
+```
+
+`override` 关键字不是必须的，但**强烈建议写**：写错函数签名时编译器会直接报错，而不是默默变成「另一个新函数」。
+
+### 2.5 基于相机类的开发（本阶段重点）
+
+**为什么要抽象一层**
+
+第三阶段的自瞄工程里，`io` 层就是 `Camera / USBCamera`。原因很实际：
+
+- 算法（识别装甲板）只想说「给我一帧图」，不关心图是从工业相机、USB 相机还是录像文件来的。
+- 换硬件时只改一个工厂函数，算法代码一行不动。
+- 测试时可以塞一个「假相机」进去，不用真的插硬件。
+
+```mermaid
+flowchart LR
+    A[算法层<br/>ArmorDetector] -->|只要 Frame| I[接口<br/>Camera 抽象基类]
+    I --> U[UsbCamera]
+    I --> N[IndustrialCamera]
+    I --> R[ReplayCamera<br/>读录像做回归测试]
+```
+
+**最小实例结构**
+
+```cpp
+// 1. 抽象基类：定义「相机应该会做什么」
+class Camera {
+public:
+    virtual ~Camera() = default;
+    virtual bool open() = 0;
+    virtual bool read(Frame& out) = 0;
+    virtual void close() = 0;
+    virtual std::string name() const = 0;
+};
+
+// 2. 工厂：把「配置里的字符串」翻译成「具体对象」
+std::unique_ptr<Camera> makeCamera(const std::string& type, int id) {
+    if (type == "usb")        return std::make_unique<UsbCamera>(id);
+    if (type == "industrial") return std::make_unique<IndustrialCamera>(id);
+    return nullptr;
+}
+
+// 3. 使用方：多态调用
+int main() {
+    std::vector<std::unique_ptr<Camera>> cameras;
+    cameras.push_back(makeCamera("usb", 0));
+    cameras.push_back(makeCamera("industrial", 1));
+
+    for (auto& cam : cameras) {          // unique_ptr 独占所有权，不需要手动 delete
+        if (!cam->open()) continue;
+        Frame frame;
+        if (cam->read(frame)) {
+            std::cout << cam->name() << " 出图："
+                      << frame.width << "x" << frame.height << '\n';
+        }
+        cam->close();
+    }
+}
+```
+
+上面这些类不依赖 OpenCV：存成一个 `camera.cpp`，用 `g++ -std=c++17 -Wall -Wextra camera.cpp -o camera && ./camera` 直接就能编译运行。
+
+**常见坑**
+
+- **基类析构不是虚的**：`delete` 基类指针时派生类的析构不执行。只要类里有 `virtual` 函数，析构函数就写上 `virtual`。
+- **对象切片**：`Camera c = usbCamera;` 会把派生部分切掉，只剩基类。要用**指针或引用**（`Camera&` / `std::unique_ptr<Camera>`）。
+- **构造函数里调虚函数无效**：构造基类时派生类还没初始化完，此时调用会落到基类版本。
+- **`new` 之后忘了 `delete`**：优先用 `std::unique_ptr` / `std::make_unique`。
+- **继承滥用**：`class Armor : public Camera` 这种「不是一种」的关系应该用**组合**（成员变量），不是继承。
+- **头文件里定义类**时记得 `#pragma once`，且成员函数若写在类内即隐式 `inline`。
+
+---
+
 ## 三、第二阶段作业
 
 > 把「相机」抽象成一个类体系：抽象基类 + 工业相机 / USB 相机两个派生类 + 工厂，
@@ -497,17 +496,17 @@ constexpr double SMALL_ARMOR_WIDTH = 135e-3;  // m，小装甲板宽度 -->
 
 ## 四、参考资料
 
-**C++ 面向对象**
-
-- 菜鸟教程 · C++ 类与对象：https://www.runoob.com/cplusplus/cpp-classes-objects.html
-- 菜鸟教程 · C++ 多态：https://www.runoob.com/cplusplus/cpp-polymorphism.html
-- C++ Core Guidelines（进阶，看 F 和 C 章节）：https://isocpp.github.io/CppCoreGuidelines/
-
 **OpenCV**
 
 - OpenCV 官方教程（C++）：https://docs.opencv.org/4.x/d9/df8/tutorial_root.html
 - OpenCV 官方文档 · 图像处理模块：https://docs.opencv.org/4.x/d7/dbd/group__imgproc.html
 - 传统装甲板识别参考思路（RoboMaster 社区大量开源实现可作对照）
+
+**C++ 面向对象**
+
+- 菜鸟教程 · C++ 类与对象：https://www.runoob.com/cplusplus/cpp-classes-objects.html
+- 菜鸟教程 · C++ 多态：https://www.runoob.com/cplusplus/cpp-polymorphism.html
+- C++ Core Guidelines（进阶，看 F 和 C 章节）：https://isocpp.github.io/CppCoreGuidelines/
 
 **C++ 继承、多态与智能指针（补充）**
 

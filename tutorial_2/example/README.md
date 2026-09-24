@@ -1,15 +1,13 @@
 # 第二阶段配套实例
 
-两个例子，覆盖教案的**算法部分**。
+一个例子，覆盖教案的**算法部分**。
 
-| 示例                    | 目录      | 对应教案         | 依赖     | 本机验证                                |
-| ----------------------- | --------- | ---------------- | -------- | --------------------------------------- |
-| 面向对象 · 相机类       | `oop/`    | 一、C++ 面向对象 | 只要 g++ | ✅ 已编译运行                            |
-| OpenCV · 装甲板四点识别 | `opencv/` | 二、OpenCV       | OpenCV   | ✅ 已在 `demo/bule_armoe.jpg` 上实测通过 |
+| 示例                    | 目录      | 对应教案   | 依赖   | 本机验证                                |
+| ----------------------- | --------- | ---------- | ------ | --------------------------------------- |
+| OpenCV · 装甲板四点识别 | `opencv/` | 一、OpenCV | OpenCV | ✅ 已在 `demo/bule_armoe.jpg` 上实测通过 |
 
 ```
 example/
-├── oop/camera_class.cpp              抽象基类 + 多态 + 工厂（不依赖任何库）
 └── opencv/
     ├── CMakeLists.txt
     ├── armor_detect.cpp              传统方法识别装甲板，输出四个角点
@@ -25,45 +23,7 @@ example/
 
 ---
 
-## ① 面向对象 · 相机类
-
-**不需要装任何东西**，一个 `g++` 就能跑：
-
-```bash
-cd example/oop
-g++ -std=c++17 -Wall -Wextra camera_class.cpp -o camera
-./camera
-```
-
-预期输出（节选）：
-
-```
-=== 1. 两种相机用同一段代码取图 ===
-  [UsbCamera /dev/video0] open() 成功（模拟）
-  UsbCamera(/dev/video0) 出图：640x480，灰度数据 307200 字节，首像素=0
-  [UsbCamera /dev/video0] close()
-  [IndustrialCamera SN20270101] open() 成功（模拟）
-  IndustrialCamera(SN20270101) 出图：1280x1024，灰度数据 1310720 字节，首像素=0
-  [IndustrialCamera SN20270101] close()
-
-=== 2. 换成回放相机做回归测试，算法代码一行没改 ===
-  [ReplayCamera demo.bag] open() 成功（模拟）
-  ...
-
-=== 3. 直接用引用调用（多态的最小验证）===
-  UsbCamera(/dev/video1) 没有取到图      ← 没有 open 就读，read() 返回 false
-```
-
-**上课要指出的四个点**
-
-1. `Camera` 是抽象基类，含纯虚函数，写 `Camera c;` 直接编译报错。
-2. `runOnce(Camera &cam)` 里只有一句 `cam.read(frame)`，但运行期会分别调到 `UsbCamera::read` 和 `IndustrialCamera::read` —— 这就是多态。
-3. 第 2 组加了一个 `ReplayCamera`，`runOnce()` **一行都没改**。这就是「算法与硬件解耦」的价值，也是第三阶段 `io` 层这么设计的原因。
-4. 每个派生类的析构里都调了 `close()`，程序结束时自动执行 —— 顺带把 RAII 讲了。
-
-**故意留的坑**：把 `virtual ~Camera() = default;` 的 `virtual` 去掉，第 1 组结尾的 `close()` 打印就会消失（派生类析构没被调用）。
-
-## ② OpenCV · 装甲板四点识别
+## ① OpenCV · 装甲板四点识别
 
 ### 装依赖
 
@@ -148,5 +108,4 @@ NO_WINDOW=1  ./build/armor_detect          # 不开窗口，只看终端和 resu
 
 ## 和后面阶段的衔接
 
-- `oop/camera_class.cpp` 里的 `Camera` 抽象基类，是第三阶段自瞄工程 `io` 层 `Camera / USBCamera` 的原型。
 - `armor_detect.cpp` 里 `detectArmor()` 的输入是 `cv::Mat`、输出是四个点，**不依赖任何框架**。第三阶段（[`tutorial_3`](../../tutorial_3/tutorial_3.md)）会把它搬进 ROS2 节点：外面套一层「订阅 `/image_raw` → `cv_bridge` 转换 → 调用 → 发布 `/armor_detector/detections` + `/armor_detector/debug_image`」，算法本身一行不用改。

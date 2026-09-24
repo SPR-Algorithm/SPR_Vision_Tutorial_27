@@ -1,6 +1,6 @@
 # =============================================================================
-# 知识点 2 · OpenCV 装甲板识别
-# 对应教案：二、OpenCV（2.2 环境搭建与最小 CMake 工程）
+# 知识点 1 · OpenCV 装甲板识别
+# 对应教案：一、OpenCV（1.2 环境搭建与最小 CMake 工程）
 #
 # 上课时执行：
 #   cd example/opencv
@@ -18,7 +18,6 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-# 找 OpenCV：REQUIRED 表示找不到就直接报错，而不是编到一半才炸
 find_package(OpenCV REQUIRED)
 
 add_executable(armor_detect armor_detect.cpp)

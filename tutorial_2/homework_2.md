@@ -1,6 +1,6 @@
 # 第二阶段作业：相机类的封装与派生
 
-对应教案：[`tutotial_2.md`](tutotial_2.md)（一、C++ 面向对象 · 1.5 基于相机类的开发）　·　参考实现：[`example/oop/camera_class.cpp`](example/oop/camera_class.cpp)
+对应教案：[`tutotial_2.md`](tutotial_2.md)（二、C++ 面向对象 · 2.5 基于相机类的开发）
 
 > 验收不设权重、不打分，**下列每一条必须逐条通过**。
 
