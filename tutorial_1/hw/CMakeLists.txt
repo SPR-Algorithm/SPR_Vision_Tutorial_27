@@ -12,8 +12,13 @@ target_include_directories(qvec PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 add_executable(qvec_demo src/main.cpp)
 target_link_libraries(qvec_demo PRIVATE qvec)
 
-add_executable(qvec_test test/test_qvec.cpp)
-target_link_libraries(qvec_test PRIVATE qvec)
+add_executable(vector_test test/test_vector.cpp)
+target_link_libraries(vector_test PRIVATE qvec)
+
+
+add_executable(matrix_test test/test_matrix.cpp)
+target_link_libraries(matrix_test PRIVATE qvec)
 
 enable_testing()
-add_test(NAME qvec_test COMMAND qvec_test)
+add_test(NAME vector_test COMMAND vector_test)
+add_test(NAME matrix_test COMMAND matrix_test)
