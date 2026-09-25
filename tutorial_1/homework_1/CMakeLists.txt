@@ -25,10 +25,10 @@ target_include_directories(rm_vector PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_compile_options(rm_vector PRIVATE ${HW1_WARNINGS})
 
 # ---- 库：加分项（矩阵运算），选做 ----
-add_library(rm_matrix STATIC src/matrix.cpp)
-target_include_directories(rm_matrix PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
-target_link_libraries(rm_matrix PUBLIC rm_vector)   # matrix.hpp 里要 rm::Matrix / rm::Vector
-target_compile_options(rm_matrix PRIVATE ${HW1_WARNINGS})
+#add_library(rm_matrix STATIC src/matrix.cpp)
+#target_include_directories(rm_matrix PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+#target_link_libraries(rm_matrix PUBLIC rm_vector)   # matrix.hpp 里要 rm::Matrix / rm::Vector
+#target_compile_options(rm_matrix PRIVATE ${HW1_WARNINGS})
 
 # ---- 自动化测试 ----
 enable_testing()
@@ -54,8 +54,8 @@ target_compile_options(test_vector PRIVATE ${HW1_WARNINGS})
 
 add_test(NAME test_vector COMMAND test_vector)
 
-add_executable(test_matrix test/test_matrix.cpp)
-target_link_libraries(test_matrix PRIVATE rm_matrix GTest::gtest_main)
-target_compile_options(test_matrix PRIVATE ${HW1_WARNINGS})
+#add_executable(test_matrix test/test_matrix.cpp)
+#target_link_libraries(test_matrix PRIVATE rm_matrix GTest::gtest_main)
+#target_compile_options(test_matrix PRIVATE ${HW1_WARNINGS})
 
-add_test(NAME test_matrix COMMAND test_matrix)
+#add_test(NAME test_matrix COMMAND test_matrix)
