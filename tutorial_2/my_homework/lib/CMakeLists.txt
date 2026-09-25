@@ -1,0 +1,5 @@
+find_package(OpenCV REQUIRED)
+add_library(lib  camera.cpp)
+target_include_directories(lib PUBLIC ../include/)
+target_include_directories(lib PUBLIC &{OpenCV_INCLUDE_DIRS})
+target_link_libraries(lib PUBLIC ${OpenCV_LIBS})
