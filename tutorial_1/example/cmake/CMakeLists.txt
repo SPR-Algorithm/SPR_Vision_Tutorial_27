@@ -1,33 +1,61 @@
 # =============================================================================
-# CMake 最小构建示例
+# 第一阶段作业 · 标准答案 + 自动化测试
+# 对应作业：tutorial_1/homework_1.md
 #
-# 上课时执行：
-#   cd example/cmake
-#   cmake -S . -B build       # 配置：读取本文件，在 build/ 生成构建文件
-#   cmake --build build       # 构建：调用 make 真正编译
-#   ./build/vec2_demo         # 运行
-#
-# -S 是源码目录，-B 是构建目录。永远不要把中间文件吐在源码目录里。
+#   cmake -S . -B build
+#   cmake --build build
+#   cd build && ctest --output-on-failure
 # =============================================================================
 
-cmake_minimum_required(VERSION 3.16)      # ① CMake 最低版本
-project(vec2_demo LANGUAGES CXX)          # ② 项目名 + 语言
+cmake_minimum_required(VERSION 3.16)
+project(hw1 LANGUAGES CXX)
 
-set(CMAKE_CXX_STANDARD 17)                # ③ 用 C++17
+set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-# ④ 把 vector2d.cpp 编成静态库目标 vec2
-#    add_library = 「我要一段能被复用的代码」
-add_library(vec2 STATIC src/vector2d.cpp)
+set(HW1_WARNINGS "")
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+  set(HW1_WARNINGS -Wall -Wextra)
+endif()
 
-#    PUBLIC：这个头文件目录既给 vec2 自己用，也传给所有链接 vec2 的目标，
-#    所以下面的 vec2_demo 不用再写一遍 include 目录。
-#    改成 PRIVATE，vec2_demo 里 #include "vector2d.hpp" 会立刻报
-#    fatal error: 'vector2d.hpp' file not found
-target_include_directories(vec2 PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+# ---- 库：作业要实现的就是它 ----
+add_library(rm_vector STATIC src/vector.cpp)
+target_include_directories(rm_vector PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_compile_options(rm_vector PRIVATE ${HW1_WARNINGS})
 
-# ⑤ 把 main.cpp 编成可执行文件目标，并链接上面那个库
-#    add_executable        = 「我要一个能被运行的产物」
-#    target_link_libraries = 「A 要用 B」
-add_executable(vec2_demo src/main.cpp)
-target_link_libraries(vec2_demo PRIVATE vec2)
+# ---- 库：加分项（矩阵运算），选做 ----
+add_library(rm_matrix STATIC src/matrix.cpp)
+target_include_directories(rm_matrix PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_link_libraries(rm_matrix PUBLIC rm_vector)   # matrix.hpp 里要 rm::Matrix / rm::Vector
+target_compile_options(rm_matrix PRIVATE ${HW1_WARNINGS})
+
+# ---- 自动化测试 ----
+enable_testing()
+
+# 优先用系统装好的 GTest；没有就自动下载（需要网络）
+find_package(GTest QUIET)
+if(NOT GTest_FOUND)
+  message(STATUS "未找到系统 GTest，改用 FetchContent 下载 googletest")
+  include(FetchContent)
+  FetchContent_Declare(googletest
+    GIT_REPOSITORY https://github.com/google/googletest.git
+    GIT_TAG        v1.14.0)
+  set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+  FetchContent_MakeAvailable(googletest)
+else()
+  message(STATUS "使用系统的 GTest")
+endif()
+
+add_executable(test_vector test/test_vector.cpp)
+# GTest::gtest_main 已经带了 GTest::gtest，不用再单独写一遍
+target_link_libraries(test_vector PRIVATE rm_vector GTest::gtest_main)
+target_compile_options(test_vector PRIVATE ${HW1_WARNINGS})
+
+add_test(NAME test_vector COMMAND test_vector)
+
+add_executable(test_matrix test/test_matrix.cpp)
+target_link_libraries(test_matrix PRIVATE rm_matrix GTest::gtest_main)
+target_compile_options(test_matrix PRIVATE ${HW1_WARNINGS})
+
+add_test(NAME test_matrix COMMAND test_matrix)
