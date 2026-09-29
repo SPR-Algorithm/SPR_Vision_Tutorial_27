@@ -650,6 +650,15 @@ data*
 &v  // v的地址
 v.data()  // vector管理的数组的地址
 
+Stack / Heap 的简化模型
+stack                                                   Heap
+int x                                               vector elements
+vector<int> v(300)                    -> 管理         image pixels
+cv::Mat img(480, 640, CV_8UC3)                      dynamic objects
+
+stack 空间小 c++自动管理
+heap 空间大
+
 ---
 
 ## 五、第二阶段作业
