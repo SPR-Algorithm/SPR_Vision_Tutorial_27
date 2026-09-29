@@ -12,6 +12,7 @@
 - `io/example.cpp` —— **面向过程**的海康相机取图：一个 `main` 从枚举设备一路写到销毁句柄，换台相机就得整段重写；
 - `main.cpp` —— **识别流水线**骨架，里面有三处 `// TODO`：初始化相机和 yolo 类、调用 yolo 识别装甲板、显示图像。
 
+
 要交的五样东西：
 
 | #   | 内容                                     | 说明                                                         |
@@ -29,6 +30,7 @@ cmake -S . -B build && cmake --build build
 ./build/main                                               # 默认读 configs/ 下的两个 yaml
 ./build/main -c configs/camera.yaml -y configs/yolo.yaml   # 也可以显式指定
 ```
+> 线下来队里接上hik相机查看是否能正常识别。
 
 跑起来后画面上要能看到装甲板的四个角点，日志里持续打印 fps 和识别到的装甲板数量。
 
