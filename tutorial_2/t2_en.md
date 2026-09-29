@@ -1,11 +1,11 @@
 # Stage 2 Training: OpenCV and Object-Oriented Programming (面向对象, miànxiàng duìxiàng)
 
-| Item              | Content                                                                                                                                                  |
-| ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Teaching goal      | Use classic OpenCV methods to detect an armor plate (装甲板, zhuāngjiǎbǎn) in an image and output its four corner points; be able to organize code with classes (类, lèi) and objects (对象, duìxiàng); be able to wrap reusable components using an abstract base class (抽象基类, chōuxiàng jīlèi) + polymorphism (多态, duōtài) + factory (工厂, gōngchǎng) |
-| Teaching focus     | `cv::Mat` and the image-processing pipeline; geometric constraints for light-bar (灯条, dēngtiáo) filtering and pairing; classes and objects, encapsulation (封装, fēngzhuāng), constructors/destructors (构造函数/析构函数, gòuzào hánshù / xīgòu hánshù), inheritance (继承, jìchéng) and polymorphism |
-| Teaching difficulty | The "light bar → pairing → four points" geometric reasoning and scoring in armor-plate detection; using classes to package "data + behavior" into reusable components |
-| Assessment method  | Submit a camera class hierarchy: abstract base class `Camera` + two derived classes `UsbCamera` / `IndustrialCamera` + a factory, calling every camera uniformly through a base-class reference |
+| Item              | Content                                                                                                                                                                    |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Teaching goal      | Detect an armor plate (装甲板, zhuāngjiǎbǎn) with classic OpenCV methods and output its four corner points; be able to organize code with classes and objects; be able to wrap reusable components with an abstract base class (抽象基类, chōuxiàng jīlèi) + polymorphism (多态, duōtài), and string them into a pipeline (流水线, liúshuǐxiàn) |
+| Teaching focus     | `cv::Mat` and the image-processing pipeline; geometric constraints for light-bar (灯条, dēngtiáo) filtering and pairing; encapsulation (封装, fēngzhuāng), construction/destruction, inheritance (继承, jìchéng) and polymorphism; decoupling hardware from the algorithm with a facade class (外观类, wàiguān lèi) + factory |
+| Teaching difficulty | The "light bar → pairing → four points" geometric reasoning and scoring in armor-plate detection; using classes to package "data + behavior" into reusable components   |
+| Assessment method  | Wrap a camera class hierarchy and string it into a pipeline: `CameraBase` + `HikCamera` / `UsbCamera` + facade class `Camera`, configuration driven by yaml, CMake dependencies filled in |
 
 ---
 
@@ -286,6 +286,17 @@ It works, but it has two problems:
 
 The first thing object-oriented programming does is **bind data and behavior together, and protect the data.**
 
+Swap this over to robots (机器人, jīqìrén) and the problem gets even more glaring — "every robot has an HP value," and a procedural style (面向过程, miànxiàng guòchéng) can only tell them apart by naming convention:
+
+```cpp
+int  infantry_hp = 400;        // global variable: anyone can change it, and the compiler won't stop a wrong change
+int  hero_hp     = 800;
+void infantry_hurt(int damage);
+void hero_hurt(int damage);    // every new robot type means another copy of the variable and the function
+```
+
+Add a sentry and a drone later, and all of this doubles again. Once it's written as a **class**, this state only lives inside its own **object** (see 2.2).
+
 ### 2.2 Classes and Objects
 
 **Concepts**
@@ -336,6 +347,40 @@ v.scale(2.0);            // change state through a method
 
 > **`const` written after the function signature** means "this function does not modify the object's state." Get in the habit of using it — anyone reading the interface can immediately see which operations have side effects. Only `const` member functions can be called on a `const` object.
 
+**A different example: a robot is an object too**
+
+Move the same style over to a RoboMaster robot — the **data** is its name and HP, the **behavior** is "taking a hit"; the two are bound together in one class, and HP can't be changed from outside:
+
+```cpp
+class Robot {
+public:
+    Robot(std::string name, int hp) : name_(std::move(name)), hp_(hp) {}
+
+    const std::string& name() const { return name_; }   // read-only: outsiders can only look
+    bool alive() const { return hp_ > 0; }
+    void hurt(int damage);                              // want to change the state? go through a method
+
+private:
+    std::string name_;
+    int  hp_ = 0;                                       // private: unreachable from outside
+};
+
+void Robot::hurt(int damage) {
+    hp_ = std::max(0, hp_ - damage);                    // the rule "HP can't go negative" is only maintained here
+}
+```
+
+```cpp
+Robot infantry{"Infantry", 400};
+infantry.hurt(600);
+std::cout << infantry.name() << " still alive? "
+          << (infantry.alive() ? "yes" : "no") << '\n';
+
+// infantry.hp_ -= 100;   // ❌ compile error: HP is not allowed to be changed from outside
+```
+
+> When do you actually need to split off subclasses? See 2.4: infantry / hero / sentry / drone each have **different behavior** (different heat limits, different movement), and that's what makes inheritance worthwhile.
+
 ### 2.3 Encapsulation (封装, fēngzhuāng): Constructors, Destructors, Access Control
 
 **Three access levels**
@@ -348,153 +393,320 @@ v.scale(2.0);            // change state through a method
 
 **Constructors / Destructors** (构造函数 / 析构函数, gòuzào hánshù / xīgòu hánshù)
 
+A drone "taking off" occupies a resource, and "landing" has to give it back. Hand both of these off to the constructor and destructor, and the user **can never forget to land**:
+
 ```cpp
-class Camera {
+class Drone {
 public:
-    explicit Camera(int id) : id_(id) {          // constructor: initialization
-        std::cout << "Camera#" << id_ << " constructed\n";
+    explicit Drone(int id) : id_(id) {
+        takeoff();                                   // constructor: acquire the resource
     }
 
-    ~Camera() {                                  // destructor: release resources
-        close();                                 // guarantees "whoever acquires it, releases it"
-        std::cout << "Camera#" << id_ << " destructed\n";
+    ~Drone() {
+        land();                                      // destructor: release the resource
+        std::cout << "Drone#" << id_ << " has landed\n";
     }
-
-    void close() { opened_ = false; }
 
 private:
-    int  id_ = 0;
-    bool opened_ = false;
+    void takeoff() { std::cout << "Drone#" << id_ << " taking off\n"; }
+    void land()    { /* stop the propellers, disconnect the link, save the log */ }
+
+    int id_ = 0;
 };
+
+void patrol() {
+    Drone drone{7};        // enters scope → constructed → takes off
+    // ... patrolling ...
+}                          // leaves scope → automatically destructed → lands, no need to hand-write land()
 ```
 
-`explicit` prevents an implicit conversion like `Camera c = 3;` from happening silently — it's recommended for every single-parameter constructor.
+`explicit` prevents an implicit conversion like `Drone drone = 7;` from happening silently — it's recommended for every single-parameter constructor.
 
-**Object lifetime (RAII)**: an object is automatically destructed when its scope ends, so "acquire the resource in the constructor, release it in the destructor" is C++'s most central programming paradigm. You don't need to hand-write `free()`, and you shouldn't forget to release resources either.
+**Object lifetime (RAII)**: an object is automatically destructed when its scope ends, so "acquire the resource in the constructor, release it in the destructor" is C++'s most central programming paradigm — as soon as `drone` in `patrol()` above leaves scope, it lands automatically; you don't need to, and shouldn't, hand-write `land()`.
+
+A sentry auto-patrolling, an industrial camera grabbing a frame, `std::vector` allocating memory... it's all the same pattern: **whoever acquires it releases it, and it happens automatically via the object's lifetime.**
 
 ### 2.4 Inheritance (继承, jìchéng) and Polymorphism (多态, duōtài)
 
 **Concepts**
 
-- **Inheritance**: `class UsbCamera : public Camera` — "a USB camera **is-a** kind of camera."
+- **Inheritance**: `class Infantry : public Robot` — "an infantry robot **is-a** kind of robot," not "an infantry robot **has-a** robot."
 - **Polymorphism**: calling through a base-class pointer/reference automatically executes the derived class's implementation at runtime.
 - **Virtual function** (虚函数, xū hánshù): the `virtual` keyword marks "this function is allowed to be overridden by derived classes."
 - **Pure virtual function** (纯虚函数, chúnxū hánshù): `= 0`, declared but not implemented. A class containing a pure virtual function is called an **abstract base class** and cannot be instantiated.
 - **Virtual destructor** (虚析构, xū xīgòu): a base class's destructor must be `virtual`, otherwise deleting through a base-class pointer will not call the derived class's destructor (a resource leak).
 
-**Minimal example**
+**Minimal example: a robot class hierarchy**
+
+The four unit types on a RoboMaster field map perfectly onto this structure — "all of them are a robot, but their behavior is completely different" — so **what they share goes in the base class, and the differences are left to the derived classes**:
 
 ```cpp
-class Camera {
+class Robot {
 public:
-    virtual ~Camera() = default;      // ⚠ the base class destructor must be virtual
-    virtual bool open() = 0;          // pure virtual function → Camera cannot be instantiated
-    virtual bool read(Frame& out) = 0;
+    virtual ~Robot() = default;              // ⚠ the base class destructor must be virtual
+    virtual void update() = 0;               // pure virtual: each type does its own thing every frame
+    virtual int  heat_limit() const = 0;     // pure virtual: heat limits differ per type
     virtual std::string name() const = 0;
 };
 
-class UsbCamera : public Camera {
+class Infantry : public Robot {              // infantry
 public:
-    bool open() override { /* open /dev/video0 */ return true; }
-    bool read(Frame& out) override { /* grab one frame */ return true; }
-    std::string name() const override { return "UsbCamera"; }
+    void update() override { /* follow the gimbal, drive the balance chassis */ }
+    int  heat_limit() const override { return 120; }
+    std::string name() const override { return "Infantry"; }
 };
 
-class IndustrialCamera : public Camera {
+class Hero : public Robot {                  // hero (heavy)
 public:
-    bool open() override { /* go through the vendor SDK */ return true; }
-    bool read(Frame& out) override { /* grab one frame */ return true; }
-    std::string name() const override { return "IndustrialCamera"; }
+    void update() override { /* large-caliber projectiles, higher armor */ }
+    int  heat_limit() const override { return 200; }
+    std::string name() const override { return "Hero"; }
+};
+
+class Sentry : public Robot {                // sentry
+public:
+    void update() override { /* auto-patrol, select targets */ }
+    int  heat_limit() const override { return 400; }
+    std::string name() const override { return "Sentry"; }
+};
+
+class Drone : public Robot {                 // drone
+public:
+    void update() override { /* flight control, drop payload */ }
+    int  heat_limit() const override { return 0; }
+    std::string name() const override { return "Drone"; }
 };
 ```
 
 ```cpp
-// Caller: doesn't care at all which concrete camera this is
-void runOnce(Camera& cam) {
-    Frame frame;
-    if (cam.read(frame)) {          // polymorphism: which implementation runs is decided at runtime
-        std::cout << cam.name() << " produced a frame\n";
+// Caller: no matter which robot comes in, the same line of code drives it
+void spin(std::vector<std::unique_ptr<Robot>>& robots) {
+    for (auto& robot : robots) {              // polymorphism: which implementation runs is decided at runtime
+        robot->update();
+        std::cout << robot->name() << " heat limit " << robot->heat_limit() << '\n';
     }
 }
 ```
+
+> Notice that `spin()` contains **none** of the names `Infantry` / `Hero` / `Sentry` / `Drone`, and no `if (type == ...)` either — which implementation to call is decided at runtime, and that's exactly the point of 2.5: the caller only ever knows the base class.
 
 The `override` keyword isn't strictly required, but it's **strongly recommended**: if you get the function signature wrong, the compiler will flag it directly, instead of silently turning it into "a different, new function."
 
-### 2.5 Development Based on the Camera Class (the focus of this stage)
+How the concepts map onto the example:
+
+| Concept                        | Robot example                             |
+| -------------------------------- | -------------------------------------------- |
+| Abstract base class              | `Robot`                                      |
+| Derived classes                  | `Infantry` / `Hero` / `Sentry` / `Drone`     |
+| Pure virtual function            | `update()`, `heat_limit()`                   |
+| Container of base-class pointers | `std::vector<std::unique_ptr<Robot>>`        |
+| Caller only knows the base class | `spin(Robot&)`                               |
+
+> The same structure shows up everywhere in the assignment: the `io` layer has `CameraBase` (abstract base class) + `Camera` (facade class); `tasks/yolo.hpp` has `YOLOBase` + `YOLO`. Why is the base class called `CameraBase` instead of `Camera`? Because the name `Camera` is reserved for the **facade class** (see 2.5) — the front door responsible for "reading the config, building the camera, flipping the image." The two names have different jobs — don't mix them up.
+
+### 2.5 Using the YOLO Class
+
+YOLO is a very classic single-stage object-detection algorithm. Compared with the traditional OpenCV light-bar-based detection, it's more robust and much less affected by lighting conditions. So it can raise both the detection accuracy and the interference resistance of the detector in the auto-aim framework.
+
+```cpp
+// yolo header
+#include "tasks/yolo.hpp"
+// get the yolo config file path; type deduced with auto
+auto yolo_config = cli.get<std::string>("yolo");    // basic_string<char>
+// initialize the yolo object
+auto_aim::YOLO yolo(yolo_config, true);
+// call the yolo detector method to produce armors[]
+const std::list<auto_aim::Armor> armors = yolo.detect(img, frame_count++);
+```
+
+### 2.6 Development Based on the Camera Class (the assignment)
 
 **Why add a layer of abstraction (抽象, chōuxiàng)**
 
-In the Stage 3 auto-aim project, the `io` layer is exactly `Camera / USBCamera`. The reasoning is very practical:
+In the Stage 3 auto-aim project, the `io` layer is exactly `CameraBase / HikCamera / UsbCamera`. The reasoning is very practical:
 
 - The algorithm (armor-plate detection) just wants to say "give me a frame" — it doesn't care whether the frame comes from an industrial camera, a USB camera, or a recorded video file.
-- When the hardware changes, only the factory function needs to change — the algorithm code doesn't move a single line.
-- During testing you can plug in a "fake camera" without needing to actually connect real hardware.
+- When the hardware changes, only one place needs to change: add one more `else if` in the `Camera` facade class — the algorithm code doesn't move a single line.
+
+
 
 ```mermaid
 flowchart LR
-    A[Algorithm layer<br/>ArmorDetector] -->|only wants a Frame| I[Interface<br/>Camera abstract base class]
-    I --> U[UsbCamera]
-    I --> N[IndustrialCamera]
-    I --> R[ReplayCamera<br/>reads a recording, for regression testing]
+    A["Algorithm layer<br/>YOLO / armor-plate detection"] -->|"only wants one cv::Mat frame"| F["Facade class<br/>Camera<br/>read config · build the camera · flip"]
+    F -->|"holds a CameraBase"| I["Abstract base class<br/>CameraBase"]
+    I --> H["HikCamera<br/>Hikvision SDK"]
+    I --> U["UsbCamera<br/>cv::VideoCapture"]
+    I --> R["ReplayCamera<br/>bonus item: plays back a recording"]
 ```
 
-**Minimal example structure**
+**The interface does exactly one thing: hand over a frame + a timestamp**
+
+Externally, a camera does exactly one thing — **hand over one BGR `cv::Mat`** (plus a timestamp). When grabbing a frame fails, there's no need to design a whole separate return-value scheme for it: just leave `img` empty, and the caller checks `img.empty()`. Resource operations like `open()` / `close()` aren't visible from outside at all — they're entirely handled by the constructor and destructor.
+
+**The caller only knows the facade class**
 
 ```cpp
-// 1. Abstract base class: defines "what a camera should be able to do"
-class Camera {
-public:
-    virtual ~Camera() = default;
-    virtual bool open() = 0;
-    virtual bool read(Frame& out) = 0;
-    virtual void close() = 0;
-    virtual std::string name() const = 0;
-};
-
-// 2. Factory: translates "a config string" into "a concrete object"
-std::unique_ptr<Camera> makeCamera(const std::string& type, int id) {
-    if (type == "usb")        return std::make_unique<UsbCamera>(id);
-    if (type == "industrial") return std::make_unique<IndustrialCamera>(id);
-    return nullptr;
-}
-
-// 3. Caller: polymorphic invocation
+// Caller: all it has is a Camera; whether underneath it's Hikvision or USB doesn't matter at all
 int main() {
-    std::vector<std::unique_ptr<Camera>> cameras;
-    cameras.push_back(makeCamera("usb", 0));
-    cameras.push_back(makeCamera("industrial", 1));
+    io::Camera camera("configs/camera.yaml");
+    auto_aim::YOLO yolo("configs/yolo.yaml", true);
 
-    for (auto& cam : cameras) {          // unique_ptr owns exclusively, no manual delete needed
-        if (!cam->open()) continue;
-        Frame frame;
-        if (cam->read(frame)) {
-            std::cout << cam->name() << " produced a frame: "
-                      << frame.width << "x" << frame.height << '\n';
-        }
-        cam->close();
+    int frame_count = 0;
+    while (true) {
+        cv::Mat img;
+        std::chrono::steady_clock::time_point timestamp;
+        camera.read(img, timestamp);
+        if (img.empty()) continue;          // frame grab failed: an empty image is the signal
+        const auto armors = yolo.detect(img, frame_count++);
+        // draw boxes, log, imshow ... see the assignment's main.cpp
+        if (cv::waitKey(1) == 'q') break;
     }
 }
 ```
 
-None of the classes above depend on OpenCV: save this as a single `camera.cpp`, and `g++ -std=c++17 -Wall -Wextra camera.cpp -o camera && ./camera` will build and run it directly.
+> The snippet above is a **structural illustration** (it depends on OpenCV / yaml-cpp / fmt); build it against the assignment's CMake project — it isn't meant to run standalone.
+> How the camera gets built, how parameters get read, how the image gets flipped — all of that is tucked away inside the `Camera` facade class. That's exactly the `io/my_camera.hpp` / `.cpp` the assignment asks you to write.
 
-**Common pitfalls**
+**Parameters always go through configuration**
 
-- **The base class's destructor isn't virtual**: deleting through a base-class pointer will not run the derived class's destructor. As soon as a class has any `virtual` function, mark the destructor `virtual` too.
-- **Object slicing** (对象切片, duìxiàng qiēpiàn): `Camera c = usbCamera;` slices off the derived part, leaving only the base class. Use a **pointer or reference** instead (`Camera&` / `std::unique_ptr<Camera>`).
-- **Calling a virtual function inside the constructor doesn't do what you'd expect**: while the base class is being constructed, the derived class hasn't finished initializing yet, so the call falls through to the base-class version.
-- **Forgetting `delete` after `new`**: prefer `std::unique_ptr` / `std::make_unique` instead.
-- **Overusing inheritance**: an "is-not-a" relationship like `class Armor : public Camera` should be modeled with **composition** (a member variable), not inheritance.
-- **When defining a class in a header file**, remember `#pragma once`; and member functions defined inside the class body are implicitly `inline`.
+The assignment requires every camera parameter to be read from `configs/camera.yaml`; `YAML::LoadFile` must never appear in business code:
+
+```cpp
+auto yaml = tools::load("configs/camera.yaml");
+auto camera_name = tools::read<std::string>(yaml, "camera_name");  // missing key → error and exit
+auto exposure_ms = tools::read<double>(yaml, "exposure_ms");
+auto flip_code   = tools::read<int>(yaml, "flip_code", 2);         // a default is given, so a missing key doesn't error
+```
+
+The benefit is immediate: swap to a different camera, or change the exposure — **only the yaml changes, no recompiling needed.** That's exactly how the Stage 3 auto-aim project is written.
+
+
+
+---
+## Part 4: Modern C++
+Being able to read a real project
+
+The auto-aim pipeline
+Camera->Image->Detector->Tracker->Aimer->Gimbal
+
+The essence of code: data flowing between modules
+
+Scope:
+`A::B` means: go into A's scope and look for B there
+`cv::Mat` — the `Mat` inside OpenCV's `cv`
+`std::vector` — the `vector` under the std library
+`auto_aim::YOLO` — the `YOLO` inside the `auto_aim` module
+
+Which module a given name belongs to —
+the reason scopes exist: to tell things apart
+
+Looking things up:
+`a.b()`
+
+`p->b()`
+
+`A::b()`
+
+`vector<Armor>` = a group of `Armor` = `Armor[n]`, except a vector can grow
+`<T>` — `T` is the type stored in the template
+
+`auto` — automatic type deduction
+
+The compiler determines its type at compile time
+```cpp
+auto yolo_config = cli.get<std::string>("yolo");    // basic_string<char>
+```
+`auto` should not be overused
+
+Reference (引用, yǐnyòng)
+```cpp
+Armor armor_origin;
+Armor & a = armor_origin;  // a is a reference to armor_origin; a and armor_origin point to the same memory
+```
+`a` is merely an alias for `armor_origin` — `a` and `armor_origin` are the same block of memory
+```cpp
+auto_aim::YOLO yolo(config_path);
+auto_aim::Solver solver(config_path);
+vector<Armor> armors = yolo.detect(img);
+const auto& armor = armors.front();
+auto image_points = solver.reproject_armor(armor,...);
+```
+
+Objects and data
+
+The manager, and the data it manages
+
+```cpp
+std::vector<float> numbers(300);  // a vector of 300 floats
+```
+the vector object
+size, capacity
+data pointer
+you access the data through a reference to, or pointer to, the object
+
+The difference between `&v` and `v.data()`
+
+```
+&v         // the address of v itself
+v.data()   // the address of the array the vector manages
+```
+
+A simplified Stack / Heap model
+```
+stack                                                   Heap
+int x                                               vector elements
+vector<int> v(300)                    -> manages       image pixels
+cv::Mat img(480, 640, CV_8UC3)                      dynamic objects
+```
+
+stack: small, managed automatically by C++
+heap: large
 
 ---
 
-## Part 3: Stage 2 Assignment
+## Part 5: Stage 2 Assignment
 
-> Abstract "the camera" into a class hierarchy: an abstract base class + two derived classes (industrial camera / USB camera) + a factory,
-> then write calling code that only knows the base-class reference — swapping cameras shouldn't require changing a single line of the algorithm.
+> Abstract "the camera" into a class hierarchy (abstract base class `CameraBase` + derived classes `HikCamera` / `UsbCamera` + facade class `Camera`),
+> with every parameter coming from `configs/camera.yaml`; then string it together with `YOLO` detection into a single pipeline: **grab frame → detect → draw box → display**,
+> and finally fill in CMake's linking dependencies.
 >
-> For the full task, requirements, acceptance checklist, and defense questions, see [`homework_2.md`](homework_2.md).
+> For the full task, requirements, file layout, and bonus items, see [`homework_2.md`](homework_2.md).
+
+The five things to submit, and the corresponding knowledge point from this lesson:
+
+| #   | Content                                                                | Corresponding knowledge point                              |
+| --- | ------------------------------------------------------------------------ | ------------------------------------------------------------ |
+| 1   | `io/my_camera.hpp` / `.cpp`: `CameraBase` + `HikCamera` + `Camera`       | 2.2–2.5: encapsulation, inheritance, polymorphism, facade class / factory |
+| 2   | Derived class `UsbCamera` (reads a USB camera via `cv::VideoCapture`)    | 2.4–2.5: the same interface — swapping the implementation only means adding one derived class |
+| 3   | `configs/camera.yaml` + reading the config via `tools/yaml.hpp`          | 2.5: separating data (config) from code — no recompiling to switch cameras |
+| 4   | `main.cpp`: grab frame → `YOLO` detection → draw box → display          | Part 1, OpenCV · 1.4 + orchestrating the pieces into a pipeline |
+| 5   | CMake dependencies filled in (both `main` and `example` must link)      | Engineering habit: whoever uses something links against it   |
+
+**How it will be graded**
+
+```bash
+cmake -S . -B build && cmake --build build
+./build/main                                               # by default reads the two yaml files under configs/
+./build/main -c configs/camera.yaml -y configs/yolo.yaml   # can also be specified explicitly
+```
+
+Once it's running, the four corner points of the armor plate should be visible on screen, and the log should continuously print the fps and the number of armor plates detected.
+
+### The Pipeline
+
+```mermaid
+flowchart LR
+    CFG["configs/camera.yaml<br/>configs/yolo.yaml"] --> CAM["io::Camera<br/>read config · build the camera · flip"]
+    CAM -->|"cv::Mat (BGR) + timestamp"| MAIN["main loop"]
+    MAIN --> DET["auto_aim::YOLO<br/>OpenVINO inference"]
+    DET -->|"list of Armor"| DRAW["tools::draw_points / draw_text"]
+    DRAW --> SHOW["cv::imshow"]
+    MAIN -.-> LOG["tools::logger()<br/>fps · armor-plate count"]
+```
+
+In one sentence: **the camera's only job is to hand over one BGR `cv::Mat`; detection's only job is to hand over a list of `Armor`; neither side knows who the other one is.**
+
+> The detection step is already provided in the assignment (`tasks/yolo.hpp`, OpenVINO inference). The classic method hand-written in section 1.4 doesn't need to be ported into the assignment — its purpose was to help you understand "find the target → output four corner points" as a concept in itself; the actual project swaps in the more robust deep-learning approach.
 
 ---
 
