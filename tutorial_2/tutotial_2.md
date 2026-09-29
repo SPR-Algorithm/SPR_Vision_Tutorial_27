@@ -1,4 +1,4 @@
-# 第二阶段培训：OpenCV 与面向对象
+# 第二阶段培训：OpenCV -面向对象-现代C++
 
 | 项目     | 内容                                                                                                                     |
 | -------- | ------------------------------------------------------------------------------------------------------------------------ |
@@ -658,6 +658,97 @@ cv::Mat img(480, 640, CV_8UC3)                      dynamic objects
 
 stack 空间小 c++自动管理
 heap 空间大
+
+stack 对象有明确的生命周期，离开作用域就自动析构
+```mermaid
+flowchart LR
+    A[born] --> B[构造-对象建立所需要的工作]
+    B --> C[离开作用域]
+    C --> D[析构-对象死亡所需要的工作]
+    D --> E[死亡-释放资源]
+```
+
+RAII: 资源跟着对象自动管理
+```mermaid
+flowchart LR
+    A[对象构造-申请资源] --> B[对象析构-释放资源]   // 箭头上标注 获取/使用资源
+```
+
+vector 管理内存 ifstream 管理文件句柄
+unique_ptr 管理动态对象 lock_guard 管理互斥锁
+
+从类型读所有权
+```cpp
+Amror* void detector(Amror*armor); // 指向Armor的指针，单看类型无法判断谁拥有它的所有权
+Armor& void solver(const Armor&armor); // 借用已有的Armor,
+
+std::unique_ptr<Armor> a;     // 单独占有，自动释放
+std::shared_ptr<Armor> a;     // 多个共享，最后1个所有者释放
+```
+类型同时会告诉你：指向什么 + 谁部分释放
+
+小结
+```mermaid
+flowchart LR
+    A[Stack/Heap]-->B[对象=!数据]-->C[Lifetime]-->D[RAII]-->E[ownership]
+```
+### Copy
+```cpp
+void s(std::vector<float> c);
+std::vector<float> b = a;
+s(a);  // 
+```
+a 1000个元素的vector
+b/c 1000个元素的vector
+
+> 元素数据独立
+copy 复制什么，由类型决定
+
+### std::move 这个对象后面的资源可以被接管
+Copy                        Move
+A. large data               A data 转交资源
+B. another large data       B same large data
+
+move 后对象仍然合法，但不要依赖于它原来的内容
+
+实例写在exp2.cpp中(只读借用，move,copy性能分析)
+
+### cv::Mat 不是不只是像素
+cv::Mat img = 图像管理对象 + 图像视图
+cv::Mat header
+rows cols type
+step reference info
+data*
+
+> Mat对象很小，实际像素通常在单独的数据区
+```cpp
+CV_8UC3 8bit unsigned 3 channel     BGR
+CV_32FC1 32bit float 1 channel
+cv::Mat b = a; // 两个Mat, 一份像素
+```
+
+```mermaid
+flowchart LR
+    A[Mat header a] --> C[shared pixel buffer]
+    B[Mat header b] --> C[shared pixel buffer]
+
+```
+> 所以修改b的像素，a也会看到变化(此处为浅拷贝)
+
+### 需要独立像素时，用clone()
+
+```cpp
+cv::Mat b = a.clone();
+```
+
+```mermaid
+flowchart LR
+A[pixel buffer A] --> B[pixel buffer B] //箭头上在加上deep copy
+```
+> 目标时生成独立，不是转移已有数据
+
+实例写在exp3.cpp中(探索深拷贝与浅拷贝)
+addNoiseColor()目标时CV_8UC3的彩色图像，创建于输入图像对应的随机噪声，返回添加噪声的新图像(图像用tutorial_2/example/opencv/demo/bule_armoe.jpg)
 
 ---
 
