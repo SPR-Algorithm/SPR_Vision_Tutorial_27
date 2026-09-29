@@ -583,48 +583,63 @@ auto flip_code   = tools::read<int>(yaml, "flip_code", 2);         // 给了默�
 
 
 ---
+
 ## 四、现代C++
+
 能读懂真实项目
 
-自瞄流水线
-Camera->Image->Detector->Tracker->Aimer->Gimbal
+**自瞄流水线**
+
+```mermaid
+flowchart LR
+    Camera --> Image --> Detector --> Tracker --> Aimer --> Gimbal
+```
 
 代码的本质：数据在各个模块之间的流动
 
-作用域：
-A::B 去A的作用域下面找B
-cv::Mat     OpenCV的cv里的Mat
-std::vector   std库下的vector
-auto_aim::YOLO   auto_aim模块中的YOLO
+### 作用域
 
-这些名称属于哪个模块
+- `A::B` 去 A 的作用域下面找 B
+- `cv::Mat` OpenCV 的 cv 里的 Mat
+- `std::vector` std 库下的 vector
+- `auto_aim::YOLO` auto_aim 模块中的 YOLO
+
+**这些名称属于哪个模块**
+
 作用域原因：为了区分
 
-找
+**找**
+
+```cpp
 a.b()
-
 p->b()
-
 A::b()
+```
 
+```cpp
 vector<Armor> = 一组Armor = Armor[n] 但vector可拓展
 <T> T为所存模板
+```
 
-
-auto 自动推导
+### auto 自动推导
 
 编译器在编译期确定其类型
+
 ```cpp
 auto yolo_config = cli.get<std::string>("yolo");    // basic_string<char>
 ```
+
 auto 不可滥用
 
-Reference 引用
+### Reference 引用
+
 ```cpp
 Armor armor_origin;
 Armor & a = armor_origin;  // a是armor_origin的引用，a和armor_origin指向同一块内存
 ```
-a仅仅是armor_origin的别名，a和armor_origin是同一块内存
+
+a 仅仅是 armor_origin 的别名，a 和 armor_origin 是同一块内存
+
 ```cpp
 auto_aim::YOLO yolo(config_path);
 auto_aim::Solver solver(config_path);
@@ -633,33 +648,39 @@ const auto& armor = armors.front();
 auto image_points = solver.reproject_armor(armor,...);
 ```
 
-对象与数据
+### 对象与数据
 
 管理者与被管理的数据
 
 ```cpp
 std::vector<float> numbers(300);  // 300个float的vector
 ```
-vector object
-size capacity
-data*
-使用对象的引用或指针来访问数据
 
-&v 与 v.data() 的区别
+- vector object
+- size capacity
+- `data*`
+- 使用对象的引用或指针来访问数据
 
-&v  // v的地址
-v.data()  // vector管理的数组的地址
+**`&v` 与 `v.data()` 的区别**
 
-Stack / Heap 的简化模型
-stack                                                   Heap
-int x                                               vector elements
-vector<int> v(300)                    -> 管理         image pixels
-cv::Mat img(480, 640, CV_8UC3)                      dynamic objects
+```cpp
+&v         // v的地址
+v.data()   // vector管理的数组的地址
+```
 
-stack 空间小 c++自动管理
-heap 空间大
+### Stack / Heap 的简化模型
+
+| stack                            |        | Heap            |
+| -------------------------------- | ------ | --------------- |
+| `int x`                          |        | vector elements |
+| `vector<int> v(300)`             | → 管理 | image pixels    |
+| `cv::Mat img(480, 640, CV_8UC3)` |        | dynamic objects |
+
+- stack 空间小，c++ 自动管理
+- heap 空间大
 
 stack 对象有明确的生命周期，离开作用域就自动析构
+
 ```mermaid
 flowchart LR
     A[born] --> B[构造-对象建立所需要的工作]
@@ -668,16 +689,18 @@ flowchart LR
     D --> E[死亡-释放资源]
 ```
 
-RAII: 资源跟着对象自动管理
+**RAII：资源跟着对象自动管理**
+
 ```mermaid
 flowchart LR
-    A[对象构造-申请资源] --> B[对象析构-释放资源]   // 箭头上标注 获取/使用资源
+    A["对象构造-申请资源"] -->|获取/使用资源| B["对象析构-释放资源"]
 ```
 
-vector 管理内存 ifstream 管理文件句柄
-unique_ptr 管理动态对象 lock_guard 管理互斥锁
+- `vector` 管理内存，`ifstream` 管理文件句柄
+- `unique_ptr` 管理动态对象，`lock_guard` 管理互斥锁
 
-从类型读所有权
+### 从类型读所有权
+
 ```cpp
 Amror* void detector(Amror*armor); // 指向Armor的指针，单看类型无法判断谁拥有它的所有权
 Armor& void solver(const Armor&armor); // 借用已有的Armor,
@@ -685,42 +708,54 @@ Armor& void solver(const Armor&armor); // 借用已有的Armor,
 std::unique_ptr<Armor> a;     // 单独占有，自动释放
 std::shared_ptr<Armor> a;     // 多个共享，最后1个所有者释放
 ```
+
 类型同时会告诉你：指向什么 + 谁部分释放
 
-小结
+### 小结
+
 ```mermaid
 flowchart LR
-    A[Stack/Heap]-->B[对象=!数据]-->C[Lifetime]-->D[RAII]-->E[ownership]
+    A["Stack/Heap"] --> B["对象=!数据"] --> C[Lifetime] --> D[RAII] --> E[ownership]
 ```
+
 ### Copy
+
 ```cpp
 void s(std::vector<float> c);
 std::vector<float> b = a;
-s(a);  // 
+s(a);  //
 ```
+
 a 1000个元素的vector
 b/c 1000个元素的vector
 
 > 元素数据独立
-copy 复制什么，由类型决定
+>
+> copy 复制什么，由类型决定
 
 ### std::move 这个对象后面的资源可以被接管
-Copy                        Move
-A. large data               A data 转交资源
-B. another large data       B same large data
+
+| Copy                  | Move            |
+| --------------------- | --------------- |
+| A. large data         | A data 转交资源 |
+| B. another large data | B same large data |
 
 move 后对象仍然合法，但不要依赖于它原来的内容
 
-实例写在exp2.cpp中(只读借用，move,copy性能分析)
+实例写在 `exp2.cpp` 中（只读借用，move，copy 性能分析）
 
 ### cv::Mat 不是不只是像素
+
+```cpp
 cv::Mat img = 图像管理对象 + 图像视图
 cv::Mat header
 rows cols type
 step reference info
 data*
+```
 
-> Mat对象很小，实际像素通常在单独的数据区
+> Mat 对象很小，实际像素通常在单独的数据区
+
 ```cpp
 CV_8UC3 8bit unsigned 3 channel     BGR
 CV_32FC1 32bit float 1 channel
@@ -731,11 +766,11 @@ cv::Mat b = a; // 两个Mat, 一份像素
 flowchart LR
     A[Mat header a] --> C[shared pixel buffer]
     B[Mat header b] --> C[shared pixel buffer]
-
 ```
-> 所以修改b的像素，a也会看到变化(此处为浅拷贝)
 
-### 需要独立像素时，用clone()
+> 所以修改 b 的像素，a 也会看到变化（此处为浅拷贝）
+
+### 需要独立像素时，用 clone()
 
 ```cpp
 cv::Mat b = a.clone();
@@ -743,12 +778,34 @@ cv::Mat b = a.clone();
 
 ```mermaid
 flowchart LR
-A[pixel buffer A] --> B[pixel buffer B] //箭头上在加上deep copy
+    A[pixel buffer A] -->|deep copy| B[pixel buffer B]
 ```
+
 > 目标时生成独立，不是转移已有数据
 
-实例写在exp3.cpp中(探索深拷贝与浅拷贝)
-addNoiseColor()目标时CV_8UC3的彩色图像，创建于输入图像对应的随机噪声，返回添加噪声的新图像(图像用tutorial_2/example/opencv/demo/bule_armoe.jpg)
+实例写在 `exp3.cpp` 中（探索深拷贝与浅拷贝）
+
+`addNoiseColor()` 目标时 CV_8UC3 的彩色图像，创建于输入图像对应的随机噪声，返回添加噪声的新图像（图像用 `tutorial_2/example/opencv/demo/bule_armoe.jpg`）
+
+### lambda 表达式
+
+```cpp
+[](int a, int b){return a+b;}(1,2); // 3
+```
+
+```cpp
+[](){}
+[=]  //按值捕获
+[&] //按引用捕获
+[frame_id,&tracker]
+```
+
+### 多线程的危险
+
+- 任务开始执行 引用对象是否销毁
+  - 风险：悬空引用
+- 另一个线程是否同时读取或修改同一份数据
+  - 数据竞争
 
 ---
 
