@@ -2,10 +2,10 @@
 
 | 项目     | 内容                                                                                                                     |
 | -------- | ------------------------------------------------------------------------------------------------------------------------ |
-| 教学目标 | 用 OpenCV 传统方法从图像中识别装甲板并输出四个角点；能用类和对象组织代码；能用抽象基类 + 多态 + 工厂封装出可复用的组件   |
-| 教学重点 | `cv::Mat` 与图像处理流水线；灯条筛选与配对的几何约束；类与对象、封装、构造函数/析构函数、继承与多态                      |
+| 教学目标 | 用 OpenCV 传统方法识别装甲板并输出四个角点；能用类和对象组织代码； 能用抽象基类 + 多态封装出可复用组件，并串成一条流水线 |
+| 教学重点 | `cv::Mat` 与图像处理流水线；灯条筛选与配对的几何约束；封装、构造/析构、继承与多态；外观类 + 工厂解耦硬件与算法           |
 | 教学难点 | 装甲板识别中「灯条 → 配对 → 四点」的几何推理与打分；用类把「数据 + 行为」封装成可复用组件                                |
-| 考核方式 | 提交一个相机类体系：抽象基类 `Camera` + `UsbCamera` / `IndustrialCamera` 两个派生类 + 工厂，并用基类引用统一调用所有相机 |
+| 考核方式 | 封装相机类体系并串成流水线：`CameraBase` + `HikCamera` / `UsbCamera` + 外观类 `Camera`，配置走 yaml，补齐 CMake 依赖     |
 
 ---
 
@@ -286,6 +286,17 @@ double length(const Vec2& v);          // 数据和行为是分开的
 
 面向对象要做的第一件事，就是把**数据和行为绑定在一起，并把数据保护起来**。
 
+换成机器人，这个问题更刺眼——「每台机器人都有血量」，面向过程只能靠命名去区分：
+
+```cpp
+int  infantry_hp = 400;        // 全局变量：谁都能改，改错了编译器也不管
+int  hero_hp     = 800;
+void infantry_hurt(int damage);
+void hero_hurt(int damage);    // 每加一种机器人，变量和函数就得再来一份
+```
+
+以后要加哨兵、无人机，这套东西就要再翻一倍。写成**类**以后，这些状态只活在属于自己的**对象**里（见 2.2）。
+
 ### 2.2 类与对象
 
 **概念**
@@ -336,6 +347,40 @@ v.scale(2.0);            // 通过方法改状态
 
 > **`const` 写在函数后面** = 「这个函数不修改对象状态」。养成习惯，读接口的人一眼就知道哪些操作有副作用。带 `const` 的成员函数才能被 `const` 对象调用。
 
+**换个例子：机器人也是对象**
+
+同一套写法搬到 RoboMaster 的机器人上——**数据**是名字和血量，**行为**是「挨打」，两者绑在一个类里，而血量外面改不了：
+
+```cpp
+class Robot {
+public:
+    Robot(std::string name, int hp) : name_(std::move(name)), hp_(hp) {}
+
+    const std::string& name() const { return name_; }   // 只读：外面只能看
+    bool alive() const { return hp_ > 0; }
+    void hurt(int damage);                              // 想改状态？走方法
+
+private:
+    std::string name_;
+    int  hp_ = 0;                                       // private：外面碰不到
+};
+
+void Robot::hurt(int damage) {
+    hp_ = std::max(0, hp_ - damage);                    // 「血量不为负」这条规则只在这里维护
+}
+```
+
+```cpp
+Robot infantry{"步兵", 400};
+infantry.hurt(600);
+std::cout << infantry.name() << " 还活着吗？"
+          << (infantry.alive() ? "是" : "否") << '\n';
+
+// infantry.hp_ -= 100;   // ❌ 编译错误：血量不许在外面乱改
+```
+
+> 什么时候才需要拆出子类？看 2.4：步兵 / 重装 / 哨兵 / 无人机**各自的行为不一样**（热量上限、移动方式都不同），才值得继承。
+
 ### 2.3 封装：构造函数、析构函数、访问控制
 
 **三个访问级别**
@@ -348,153 +393,309 @@ v.scale(2.0);            // 通过方法改状态
 
 **构造函数 / 析构函数**
 
+无人机「起飞」要占资源，「降落」要还回去。把这两件事交给构造和析构，用户就**永远没机会忘记降落**：
+
 ```cpp
-class Camera {
+class Drone {
 public:
-    explicit Camera(int id) : id_(id) {          // 构造函数：初始化
-        std::cout << "Camera#" << id_ << " 构造\n";
+    explicit Drone(int id) : id_(id) {
+        takeoff();                                   // 构造：拿资源
     }
 
-    ~Camera() {                                  // 析构函数：释放资源
-        close();                                 // 保证「谁申请、谁释放」
-        std::cout << "Camera#" << id_ << " 析构\n";
+    ~Drone() {
+        land();                                      // 析构：还资源
+        std::cout << "无人机#" << id_ << " 已降落\n";
     }
-
-    void close() { opened_ = false; }
 
 private:
-    int  id_ = 0;
-    bool opened_ = false;
+    void takeoff() { std::cout << "无人机#" << id_ << " 起飞\n"; }
+    void land()    { /* 关桨、断链路、保存日志 */ }
+
+    int id_ = 0;
 };
+
+void patrol() {
+    Drone drone{7};        // 进作用域 → 构造 → 起飞
+    // ... 巡逻 ...
+}                          // 出作用域 → 自动析构 → 降落，不用手写 land()
 ```
 
-`explicit` 防止 `Camera c = 3;` 这种隐式转换悄悄发生——单参数构造函数建议都加上。
+`explicit` 防止 `Drone drone = 7;` 这种隐式转换悄悄发生——单参数构造函数建议都加上。
 
-**对象生命周期（RAII）**：对象在作用域结束时自动析构，所以「构造函数里拿资源、析构函数里放资源」是 C++ 最核心的编程范式。你不需要手写 `free()`，也不该忘。
+**对象生命周期（RAII）**：对象在作用域结束时自动析构，所以「构造函数里拿资源、析构函数里放资源」是 C++ 最核心的编程范式——上面 `patrol()` 里的 `drone` 一出作用域就自动降落，你不需要也不该手写 `land()`。
+
+哨兵自动巡逻、工业相机取图、`std::vector` 申请内存……全是同一个套路：**谁申请、谁释放，而且由对象生命周期自动完成**。
 
 ### 2.4 继承与多态
 
 **概念**
 
-- **继承**：`class UsbCamera : public Camera` —— 「USB 相机**是**一种相机」。
+- **继承**：`class Infantry : public Robot` —— 「步兵**是**一种机器人」，而不是「步兵**有**一个机器人」。
 - **多态**：用基类指针/引用调用，运行期自动执行到派生类的实现。
 - **虚函数**：`virtual` 标记「这个函数允许被派生类改写」。
 - **纯虚函数**：`= 0`，只声明不实现，含纯虚函数的类叫**抽象基类**，不能实例化。
 - **虚析构**：基类的析构函数必须是 `virtual`，否则 `delete` 基类指针时派生类的析构不会被调用（资源泄漏）。
 
-**最小实例**
+**最小实例：机器人等级体系**
+
+RoboMaster 场上四种兵种正好对上这个结构——「都是一台机器人，但行为完全不同」，于是**共同点放进基类，差异留给派生类**：
 
 ```cpp
-class Camera {
+class Robot {
 public:
-    virtual ~Camera() = default;      // ⚠ 基类析构必须虚
-    virtual bool open() = 0;          // 纯虚函数 → Camera 不能被实例化
-    virtual bool read(Frame& out) = 0;
+    virtual ~Robot() = default;              // ⚠ 基类析构必须虚
+    virtual void update() = 0;               // 纯虚：每帧各做各的事
+    virtual int  heat_limit() const = 0;     // 纯虚：热量上限各不一样
     virtual std::string name() const = 0;
 };
 
-class UsbCamera : public Camera {
+class Infantry : public Robot {              // 步兵
 public:
-    bool open() override { /* 打开 /dev/video0 */ return true; }
-    bool read(Frame& out) override { /* 取一帧 */ return true; }
-    std::string name() const override { return "UsbCamera"; }
+    void update() override { /* 跟云台、走平衡底盘 */ }
+    int  heat_limit() const override { return 120; }
+    std::string name() const override { return "Infantry"; }
 };
 
-class IndustrialCamera : public Camera {
+class Hero : public Robot {                  // 重装
 public:
-    bool open() override { /* 走 SDK */ return true; }
-    bool read(Frame& out) override { /* 取一帧 */ return true; }
-    std::string name() const override { return "IndustrialCamera"; }
+    void update() override { /* 大弹丸、抗伤 */ }
+    int  heat_limit() const override { return 200; }
+    std::string name() const override { return "Hero"; }
+};
+
+class Sentry : public Robot {                // 哨兵
+public:
+    void update() override { /* 自动巡逻、选目标 */ }
+    int  heat_limit() const override { return 400; }
+    std::string name() const override { return "Sentry"; }
+};
+
+class Drone : public Robot {                 // 无人机
+public:
+    void update() override { /* 飞行控制、抛弹 */ }
+    int  heat_limit() const override { return 0; }
+    std::string name() const override { return "Drone"; }
 };
 ```
 
 ```cpp
-// 使用方：完全不关心具体是哪种相机
-void runOnce(Camera& cam) {
-    Frame frame;
-    if (cam.read(frame)) {          // 多态：运行期决定调谁
-        std::cout << cam.name() << " 出图\n";
+// 使用方：不管来的是哪台机器人，同一行代码就能驱动它
+void spin(std::vector<std::unique_ptr<Robot>>& robots) {
+    for (auto& robot : robots) {              // 多态：运行期决定调谁
+        robot->update();
+        std::cout << robot->name() << " 热量上限 " << robot->heat_limit() << '\n';
     }
 }
 ```
+
+> 注意 `spin()` 里**没有** `Infantry` / `Hero` / `Sentry` / `Drone` 这几个名字，也没有 `if (type == ...)`——运行期决定调谁，这正是 2.5 的重点：使用方只认基类。
 
 `override` 关键字不是必须的，但**强烈建议写**：写错函数签名时编译器会直接报错，而不是默默变成「另一个新函数」。
 
-### 2.5 基于相机类的开发（本阶段重点）
+概念和例子的对应关系：
+
+| 概念           | 机器人例子                               |
+| -------------- | ---------------------------------------- |
+| 抽象基类       | `Robot`                                  |
+| 派生类         | `Infantry` / `Hero` / `Sentry` / `Drone` |
+| 纯虚函数       | `update()`、`heat_limit()`               |
+| 基类指针容器   | `std::vector<std::unique_ptr<Robot>>`    |
+| 使用方只认基类 | `spin(Robot&)`                           |
+
+> 同样的结构在作业里到处都是：`io` 层是 `CameraBase`（抽象基类）+ `Camera`（外观类），`tasks/yolo.hpp` 里是 `YOLOBase` + `YOLO`。基类为什么叫 `CameraBase` 而不是 `Camera`？因为 `Camera` 这个名字留给了**外观类**（见 2.5）——负责「读配置、造相机、翻转图像」的门面。两个名字分工不同，不要混用。
+
+### 2.5 yolo类的使用
+
+yolo是一类非常经典的单阶段目标检测算法，相较于传统的opencv的灯条识别来说，它的鲁棒性更强，受光照条件的影响较小。所以可以提升自瞄框架中的detector的检测精度，和抗干扰能力。
+
+```cpp
+// yolo 头文件
+#include "tasks/yolo.hpp"
+// 获取yolo配置文件 auto推导
+auto yolo_config = cli.get<std::string>("yolo");    // basic_string<char>
+// 初始化yolo对象
+auto_aim::YOLO yolo(yolo_config, true);
+// 调用yolo detector 方法 创建armors[];
+const std::list<auto_aim::Armor> armors = yolo.detect(img, frame_count++);
+```
+
+### 2.6 基于相机类的开发 (作业)
 
 **为什么要抽象一层**
 
-第三阶段的自瞄工程里，`io` 层就是 `Camera / USBCamera`。原因很实际：
+第三阶段的自瞄工程里，`io` 层就是 `CameraBase / HikCamera / UsbCamera`。原因很实际：
 
-- 算法（识别装甲板）只想说「给我一帧图」，不关心图是从工业相机、USB 相机还是录像文件来的。
-- 换硬件时只改一个工厂函数，算法代码一行不动。
-- 测试时可以塞一个「假相机」进去，不用真的插硬件。
+- 算法（识别装甲板）只想说「给我一帧图」，不关心图是从工业相机、USB 摄像头还是录像文件来的。
+- 换硬件时只改一个地方：在 `Camera` 外观类里多一条 `else if`，算法代码一行不动。
+
+
 
 ```mermaid
 flowchart LR
-    A[算法层<br/>ArmorDetector] -->|只要 Frame| I[接口<br/>Camera 抽象基类]
-    I --> U[UsbCamera]
-    I --> N[IndustrialCamera]
-    I --> R[ReplayCamera<br/>读录像做回归测试]
+    A["算法层<br/>YOLO / 装甲板识别"] -->|"只要一帧 cv::Mat"| F["外观类<br/>Camera<br/>读配置 · 造相机 · 翻转"]
+    F -->|"持有 CameraBase"| I["抽象基类<br/>CameraBase"]
+    I --> H["HikCamera<br/>海康 SDK"]
+    I --> U["UsbCamera<br/>cv::VideoCapture"]
+    I --> R["ReplayCamera<br/>加分项：读录像"]
 ```
 
-**最小实例结构**
+**接口只做一件事：交出一帧图 + 时间戳**
+
+相机对外只做一件事——**交出一张 BGR 的 `cv::Mat`**（外加一个时间戳）。取图失败时不必再设计一套返回值：把 `img` 留空即可，调用方用 `img.empty()` 判断。`open()` / `close()` 这类资源操作外面根本看不到，全部由构造函数和析构函数兜住。
+
+**使用方只认外观类**
 
 ```cpp
-// 1. 抽象基类：定义「相机应该会做什么」
-class Camera {
-public:
-    virtual ~Camera() = default;
-    virtual bool open() = 0;
-    virtual bool read(Frame& out) = 0;
-    virtual void close() = 0;
-    virtual std::string name() const = 0;
-};
-
-// 2. 工厂：把「配置里的字符串」翻译成「具体对象」
-std::unique_ptr<Camera> makeCamera(const std::string& type, int id) {
-    if (type == "usb")        return std::make_unique<UsbCamera>(id);
-    if (type == "industrial") return std::make_unique<IndustrialCamera>(id);
-    return nullptr;
-}
-
-// 3. 使用方：多态调用
+// 使用方：手上只有 Camera，底下是海康还是 USB 一律不管
 int main() {
-    std::vector<std::unique_ptr<Camera>> cameras;
-    cameras.push_back(makeCamera("usb", 0));
-    cameras.push_back(makeCamera("industrial", 1));
+    io::Camera camera("configs/camera.yaml");
+    auto_aim::YOLO yolo("configs/yolo.yaml", true);
 
-    for (auto& cam : cameras) {          // unique_ptr 独占所有权，不需要手动 delete
-        if (!cam->open()) continue;
-        Frame frame;
-        if (cam->read(frame)) {
-            std::cout << cam->name() << " 出图："
-                      << frame.width << "x" << frame.height << '\n';
-        }
-        cam->close();
+    int frame_count = 0;
+    while (true) {
+        cv::Mat img;
+        std::chrono::steady_clock::time_point timestamp;
+        camera.read(img, timestamp);
+        if (img.empty()) continue;          // 取图失败：空图就是信号
+        const auto armors = yolo.detect(img, frame_count++);
+        // 画框、打日志、imshow …… 见作业 main.cpp
+        if (cv::waitKey(1) == 'q') break;
     }
 }
 ```
 
-上面这些类不依赖 OpenCV：存成一个 `camera.cpp`，用 `g++ -std=c++17 -Wall -Wextra camera.cpp -o camera && ./camera` 直接就能编译运行。
+> 上面这段是**结构示意**（依赖 OpenCV / yaml-cpp / fmt），按作业的 CMake 工程编译，不追求单独能跑。
+> 相机怎么造、参数怎么读、图像怎么翻转，全都收在 `Camera` 外观类里——那正是作业要你写的 `io/my_camera.hpp` / `.cpp`。
 
-**常见坑**
+**参数一律走配置**
 
-- **基类析构不是虚的**：`delete` 基类指针时派生类的析构不执行。只要类里有 `virtual` 函数，析构函数就写上 `virtual`。
-- **对象切片**：`Camera c = usbCamera;` 会把派生部分切掉，只剩基类。要用**指针或引用**（`Camera&` / `std::unique_ptr<Camera>`）。
-- **构造函数里调虚函数无效**：构造基类时派生类还没初始化完，此时调用会落到基类版本。
-- **`new` 之后忘了 `delete`**：优先用 `std::unique_ptr` / `std::make_unique`。
-- **继承滥用**：`class Armor : public Camera` 这种「不是一种」的关系应该用**组合**（成员变量），不是继承。
-- **头文件里定义类**时记得 `#pragma once`，且成员函数若写在类内即隐式 `inline`。
+作业要求相机参数全部从 `configs/camera.yaml` 读，业务代码里不许出现 `YAML::LoadFile`：
+
+```cpp
+auto yaml = tools::load("configs/camera.yaml");
+auto camera_name = tools::read<std::string>(yaml, "camera_name");  // 缺 key → 报错退出
+auto exposure_ms = tools::read<double>(yaml, "exposure_ms");
+auto flip_code   = tools::read<int>(yaml, "flip_code", 2);         // 给了默认值，缺 key 不报错
+```
+
+好处很直接：换一台相机、改一次曝光，**只改 yaml，不重编代码**。第三阶段的自瞄工程就是这么写的。
+
+
+
+---
+## 四、现代C++
+能读懂真实项目
+
+自瞄流水线
+Camera->Image->Detector->Tracker->Aimer->Gimbal
+
+代码的本质：数据在各个模块之间的流动
+
+作用域：
+A::B 去A的作用域下面找B
+cv::Mat     OpenCV的cv里的Mat
+std::vector   std库下的vector
+auto_aim::YOLO   auto_aim模块中的YOLO
+
+这些名称属于哪个模块
+作用域原因：为了区分
+
+找
+a.b()
+
+p->b()
+
+A::b()
+
+vector<Armor> = 一组Armor = Armor[n] 但vector可拓展
+<T> T为所存模板
+
+
+auto 自动推导
+
+编译器在编译期确定其类型
+```cpp
+auto yolo_config = cli.get<std::string>("yolo");    // basic_string<char>
+```
+auto 不可滥用
+
+Reference 引用
+```cpp
+Armor armor_origin;
+Armor & a = armor_origin;  // a是armor_origin的引用，a和armor_origin指向同一块内存
+```
+a仅仅是armor_origin的别名，a和armor_origin是同一块内存
+```cpp
+auto_aim::YOLO yolo(config_path);
+auto_aim::Solver solver(config_path);
+vector<Armor> armors = yolo.detect(img);4
+const auto& armor = armors.front();
+auto image_points = solver.reproject_armor(armor,...);
+```
+
+对象与数据
+
+管理者与被管理的数据
+
+```cpp
+std::vector<float> numbers(300);  // 300个float的vector
+```
+vector object
+size capacity
+data*
+使用对象的引用或指针来访问数据
+
+&v 与 v.data() 的区别
+
+&v  // v的地址
+v.data()  // vector管理的数组的地址
 
 ---
 
-## 三、第二阶段作业
+## 五、第二阶段作业
 
-> 把「相机」抽象成一个类体系：抽象基类 + 工业相机 / USB 相机两个派生类 + 工厂，
-> 再写一段只认基类引用的调用代码——换相机时算法一行不用改。
+> 把「相机」抽象成一个类体系（抽象基类 `CameraBase` + 派生类 `HikCamera` / `UsbCamera` + 外观类 `Camera`），
+> 参数全部走 `configs/camera.yaml`；再把它和 `YOLO` 识别串成一条流水线：**取图 → 识别 → 画框 → 显示**，
+> 最后补齐 CMake 的链接依赖。
 >
-> 完整题目、要求、验收清单与答辩问题，见 [`homework_2.md`](homework_2.md)。
+> 完整题目、要求、文件结构与加分项见 [`homework_2.md`](homework_2.md)。
+
+要交的五样东西，以及它们对应的本节知识点：
+
+| #   | 内容                                                               | 对应知识点                                      |
+| --- | ------------------------------------------------------------------ | ----------------------------------------------- |
+| 1   | `io/my_camera.hpp` / `.cpp`：`CameraBase` + `HikCamera` + `Camera` | 2.2 ~ 2.5：封装、继承、多态、外观类 / 工厂      |
+| 2   | 派生类 `UsbCamera`（用 `cv::VideoCapture` 读 USB 摄像头）          | 2.4 ~ 2.5：同一套接口，换一种实现只加一个派生类 |
+| 3   | `configs/camera.yaml` + 用 `tools/yaml.hpp` 读配置                 | 2.5：数据（配置）与代码分开，换相机不重编       |
+| 4   | `main.cpp`：取图 → `YOLO` 识别 → 画框 → 显示                       | 一、OpenCV · 1.4 + 把各部分编排成流水线         |
+| 5   | CMake 依赖补齐（`main` 与 `example` 都要链接通过）                 | 工程习惯：谁用了什么，就给谁链接什么            |
+
+**验收方式**
+
+```bash
+cmake -S . -B build && cmake --build build
+./build/main                                               # 默认读 configs/ 下的两个 yaml
+./build/main -c configs/camera.yaml -y configs/yolo.yaml   # 也可以显式指定
+```
+
+跑起来后画面上要能看到装甲板的四个角点，日志里持续打印 fps 和识别到的装甲板数量。
+
+### 流水线
+
+```mermaid
+flowchart LR
+    CFG["configs/camera.yaml<br/>configs/yolo.yaml"] --> CAM["io::Camera<br/>读配置 · 造相机 · 翻转"]
+    CAM -->|"cv::Mat（BGR）+ timestamp"| MAIN["main 循环"]
+    MAIN --> DET["auto_aim::YOLO<br/>OpenVINO 推理"]
+    DET -->|"Armor 列表"| DRAW["tools::draw_points / draw_text"]
+    DRAW --> SHOW["cv::imshow"]
+    MAIN -.-> LOG["tools::logger()<br/>fps · 装甲板数量"]
+```
+
+一句话：**相机只负责给出一张 BGR 的 `cv::Mat`，识别只负责给出一串 `Armor`，两边都不知道对方是谁。**
+
+> 识别这一步作业里已经给好了（`tasks/yolo.hpp`，OpenVINO 推理）。1.4 节手写的传统方法不必搬进作业，
+> 它帮你理解的是「找目标 → 输出四个角点」这件事本身；工程里换成了更稳的深度学习方法。
 
 ---
 
@@ -514,7 +715,7 @@ int main() {
 
 **C++ 继承、多态与智能指针（补充）**
 
-- cppreference · 虚函数与虚析构：https://en.cppreference.com/w/cpp/language/virtual
+- cppreference · 虚函数与虚析构： https://en.cppreference.com/w/cpp/language/virtual
 - cppreference · `std::unique_ptr`：https://en.cppreference.com/w/cpp/memory/unique_ptr
 - C++ Core Guidelines · 继承与多态（C.35 ~ C.67）：https://isocpp.github.io/CppCoreGuidelines/
 
