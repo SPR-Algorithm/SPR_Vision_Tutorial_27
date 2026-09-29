@@ -1,6 +1,6 @@
-# Stage 2 Assignment: Camera Class Wrapping (封装, fēngzhuāng) and Derivation (派生, pàishēng)
+# Stage 2 Assignment: Camera Class Hierarchy and the Armor-Plate Detection Pipeline
 
-Corresponding lesson: [`tutorial_2.md`](tutorial_2.md) (Section 二 (èr), C++ Object-Oriented Programming · 2.5 Development Based on the Camera Class)
+Corresponding lesson: [`tutorial_2.md`](tutorial_2.md) (Part 1, OpenCV · 1.4 Armor-Plate Detection + Part 2, C++ Object-Oriented Programming · 2.6 Development Based on the Camera Class)
 
 > Grading has no weights and no scores — **every item below must pass individually.**
 
@@ -8,81 +8,87 @@ Corresponding lesson: [`tutorial_2.md`](tutorial_2.md) (Section 二 (èr), C++ O
 
 ## 1. The Task
 
-Write a **camera class hierarchy**: an abstract base class (抽象基类, chōuxiàng jīlèi) + two derived classes (派生类, pàishēnglèi) + a factory (工厂, gōngchǎng), so that "grab one frame" is completely decoupled from "which specific camera it is."
+First read two files that are already written, then start modifying:
+
+- `io/example.cpp` — a **procedural-style** (面向过程, miànxiàng guòchéng) Hikvision (海康, hǎikāng) camera frame-grabber: a single `main` that goes all the way from enumerating devices (枚举设备, méijǔ shèbèi) to destroying the handle (句柄, jùbǐng); swapping to a different camera means rewriting the whole block;
+- `main.cpp` — the skeleton of the **detection pipeline** (流水线, liúshuǐxiàn), containing three `// TODO` markers: initialize the camera and the YOLO class, call YOLO to detect the armor plate (装甲板, zhuāngjiǎbǎn), and display the image.
+
+Five things to submit:
+
+| #   | Content                                   | Description                                                                     |
+| --- | ------------------------------------------ | ---------------------------------------------------------------------------------- |
+| 1   | `io/my_camera.hpp` / `.cpp`                | Abstract base class (抽象基类, chōuxiàng jīlèi) `CameraBase` + derived class (派生类, pàishēnglèi) `HikCamera` + facade class (外观类, wàiguān lèi) `Camera` |
+| 2   | Derived class `UsbCamera`                  | Add it yourself: read a USB camera using `cv::VideoCapture`                       |
+| 3   | `configs/camera.yaml` + `tools/yaml.hpp`   | Camera parameters must come from a config file — hardcoding (硬编码, yìng biānmǎ) is not allowed |
+| 4   | `main.cpp`                                 | Grab frame → `YOLO` detection → draw the box → display, making the whole pipeline run end to end |
+| 5   | CMake dependencies                         | Fill in whatever linking is missing; both the `main` and `example` targets must link successfully |
+
+**How it will be graded**
+
+```bash
+cmake -S . -B build && cmake --build build
+./build/main                                               # by default reads the two yaml files under configs/
+./build/main -c configs/camera.yaml -y configs/yolo.yaml   # can also be specified explicitly
+```
+
+Once it's running, the four corner points of the armor plate should be visible on screen, and the log should continuously print the fps and the number of armor plates detected.
+
+### The Pipeline (get the big picture first, then start coding)
 
 ```mermaid
 flowchart LR
-    A["Algorithm layer<br/>only knows Camera&"] -->|open / read / close| I["Abstract base class<br/>Camera"]
-    I --> U["UsbCamera<br/>device ID · 640×480"]
-    I --> N["IndustrialCamera<br/>serial number · 1280×1024"]
-    I --> R["ReplayCamera<br/>bonus item: plays back a recording"]
+    CFG["configs/camera.yaml<br/>configs/yolo.yaml"] --> CAM["io::Camera<br/>read config · build the camera · flip"]
+    CAM -->|"cv::Mat (BGR) + timestamp"| MAIN["main loop"]
+    MAIN --> DET["auto_aim::YOLO<br/>OpenVINO inference"]
+    DET -->|"list of Armor"| DRAW["tools::draw_points / draw_text"]
+    DRAW --> SHOW["cv::imshow"]
+    MAIN -.-> LOG["tools::logger()<br/>fps · armor-plate count"]
 ```
 
-Four things to submit:
+In one sentence: **the camera's only job is to hand over one BGR `cv::Mat`; detection's only job is to hand over a list of `Armor`; neither side knows who the other one is.**
+This is exactly the layering used in the Stage 3 auto-aim project: `io` handles hardware, `tasks` handles the algorithms, `tools` handles general-purpose utilities, and `main` only does pipeline orchestration.
 
-| #   | Content                   | Description                                                                             |
-| --- | -------------------------- | ----------------------------------------------------------------------------------------- |
-| 1   | Abstract base class `Camera` | Defines "what a camera should be able to do": `open()` / `read(Frame&)` / `close()` / `name()` |
-| 2   | Derived class `UsbCamera`        | USB camera: constructor parameter is a device ID, outputs 640×480                          |
-| 3   | Derived class `IndustrialCamera` | Industrial camera: constructor parameter is a serial number, outputs 1280×1024             |
-| 4   | Factory `makeCamera()`           | Translates a config string (`"usb"` / `"industrial"`) into a concrete object                |
-
-**This assignment does not require an actual camera to be connected**: inside `read()` it is fine to just fabricate data (generate grayscale values by frame number, as in the example).
-The focus is the **class structure** and the **calling convention** — that's what grading looks at, not the picture itself.
-
-**How it will be graded**: `cmake -S . -B build && cmake --build build && ./build/camera`.
-The output must make it clear that "both kinds of cameras went through the same function," and that every camera's `close()` gets called by the time the program ends.
 
 ## 2. Requirements
 
-### 2.1 Class Structure
+### 2.1 Configuration and Tools
 
-1. **Abstract base class**: all four interfaces of `Camera` must be **pure virtual functions** (纯虚函数, chúnxū hánshù, `= 0`). `Camera cam;` must fail to compile.
-2. **Virtual destructor** (虚析构, xū xīgòu): `virtual ~Camera() = default;`. During grading, a `std::unique_ptr<Camera>` will hold a derived-class object, to check whether the derived class's `close()` gets invoked.
-3. **Two derived classes**: different constructor parameters (device ID / serial number), different output resolutions (640×480 / 1280×1024); `name()` must return a string that distinguishes the model and the ID.
-4. **RAII**: write `close()` inside the derived class's destructor, to guarantee "when the object is gone → the resource is released." If the base class's destructor is missing `virtual`, the derived class's destructor will not run.
-5. **Factory**: `makeCamera(const std::string& type, int id)` returns `std::unique_ptr<Camera>`; for an unknown type it should print an error and return `nullptr` — do not throw an exception and do not call `exit()`.
+1. **Read configuration through `tools/yaml.hpp`**: `tools::load(path)` handles loading (if the file fails to load, it reports the error via `logger()->error`), and `tools::read<T>(yaml, key)` / `read<T>(yaml, key, default)` handle retrieving values (respectively erroring out, or falling back to the default, when the key is missing). **Business code must never call `YAML::LoadFile` directly.**
+2. **Understand the fields in `configs/camera.yaml`**: `camera_name`, `exposure_ms`, `gain`, `vid_pid`, `flip_code` — all of these must be read out via `tools::read`, **do not hardcode them.**
 
-### 2.2 The Caller's Side (the main focus of this assignment: learn to call through the base-class interface only)
+### 2.2 Build
 
-6. **Polymorphic call** (多态调用, duōtài diàoyòng): in `main`, put all cameras into `std::vector<std::unique_ptr<Camera>>`, and process them one by one with **the same function** (e.g. `runOnce(Camera&)`).
-7. **The function parameter must be written as `Camera&`** (or `Camera*`), and the body of this function **must not contain the class names `UsbCamera` / `IndustrialCamera`.**
-8. **No branching by type**: the caller must not contain `if (type == "usb")`, `dynamic_cast`, or `typeid` — "which camera it is" is knowledge that only the factory function is allowed to have; once outside the factory, only `Camera&` remains.
-9. **No raw `new` / `delete`** (裸指针, luǒ zhǐzhēn / bare pointers): use `std::make_unique` + `std::unique_ptr` (智能指针, zhìnéng zhǐzhēn — smart pointer) exclusively.
-10. **All three calling scenarios must be demonstrated**, printing both `name()` and the output frame size each time:
-    - The factory builds a USB camera + an industrial camera, and the same `runOnce` grabs a frame from each in turn;
-    - Directly construct a `UsbCamera` and call it through a reference, **calling `read()` without calling `open()` first**: it must return `false`, without crashing and without producing garbage data;
-    - Call `open()` and then grab a frame: it should return a normal frame.
+3. `cmake -S . -B build && cmake --build build` must produce **no errors**; both the `main` and `example` targets must link successfully.
+4. Some of the dependencies are already provided: `find_package(OpenCV / fmt / Eigen3 / yaml-cpp / OpenVINO)`, and the Hikvision SDK's `MvCameraControl` + `usb-1.0` are already configured in the skeleton. **What you need to fill in is the chain of "who uses what"** — for example, if `tools` is an `OBJECT` library and `logger.cpp` uses fmt, then when the linker reports `undefined reference to fmt::v9::...`, follow that chain to figure out which target needs to link against what.
 
-## 3. Acceptance Checklist
+## 3. Bonus Items (optional)
 
-- [ ] `Camera cam;` fails to compile (an abstract class cannot be instantiated)
-- [ ] When a `unique_ptr<Camera>` is destructed, the derived class's `close()` gets called
-- [ ] Calling `read()` without `open()` first returns `false`
-- [ ] Passing an unknown type to `makeCamera` returns `nullptr`, prints an error, and the program does not crash
-- [ ] A project-wide search finds no raw `new` (other than inside `make_unique`) and no `delete`
-- [ ] Searching inside the `runOnce` function body finds no `UsbCamera` / `IndustrialCamera` / `dynamic_cast`
-- [ ] The same block of code can grab a frame from both the USB camera and the industrial camera, with the frame size varying by camera
-- [ ] `-Wall -Wextra` produces no warnings; `cmake -S . -B build && cmake --build build` succeeds
+1. **`ReplayCamera`**: add one more derived class that uses `cv::VideoCapture` to read a **recorded video file**; after playing back N frames, `read()` should return an empty `img` to signal the end, for use in offline regression testing. Its code is almost identical to `UsbCamera`'s — which is exactly what demonstrates the value of the abstraction (抽象, chōuxiàng).
+2. **Isolate the SDK**: move `MvCameraControl.h` out of `my_camera.hpp` (forward-declare the member as a pointer / use PIMPL), so that the `tasks` layer has no dependency on the Hikvision SDK at all.
+3. **Extract the fps counter into a utility**: add a small sliding-window average-frame-rate class in `tools`, so that `main` only needs to call a single line.
 
-## 4. Bonus: Playback Camera (optional)
-
-Add one more derived class, `ReplayCamera`, that reads a "recording" (simulating playback of N frames before ending), for use in offline regression testing:
-
-- Adding it to `makeCamera` should take only one line, and **the caller should not need to change at all** — being able to show this proves the abstraction (抽象, chōuxiàng) was done correctly;
-- Once playback finishes, `read()` should return `false`, and the caller must handle this gracefully (it must not be treated as a crash).
-
-## 5. Reference File Layout
+## 4. Reference File Layout
 
 ```
-camera/
-├── CMakeLists.txt
-├── include/camera.hpp        Camera / UsbCamera / IndustrialCamera / makeCamera
-├── src/
-│   ├── camera.cpp            Implementation
-│   └── main.cpp              Caller: handles all cameras uniformly via Camera&
-└── README.md                 (optional) how to build, run, and expected output
+homework_2/
+├── CMakeLists.txt              two executable targets: main / example
+├── main.cpp                    ← pipeline orchestration
+├── configs/
+│   ├── camera.yaml             ← to write: camera parameters
+│   └── yolo.yaml               already provided
+├── assets/yolov5.xml           already provided (OpenVINO IR)
+├── io/
+│   ├── CMakeLists.txt          already provided: io library + Hikvision SDK config
+│   ├── example.cpp             already provided: raw-SDK frame-grabbing reference
+│   ├── my_camera.hpp           ← to write: CameraBase / HikCamera / Camera / UsbCamera
+│   ├── my_camera.cpp           ← to write: implementation
+│   └── hikrobot/               already provided: SDK headers and libraries
+├── tasks/                      already provided: YOLO / YOLOV5 / Armor
+└── tools/
+    ├── logger.hpp / .cpp       already provided
+    ├── img_tools.hpp / .cpp    already provided
+    └── yaml.hpp                already provided
 ```
 
-> Declarations go in the header file, implementation goes in the source file — a habit you already learned in Stage 1, and one you'll keep using in every stage from here on.
-> Every header file needs `#pragma once`.
+> One-sentence summary of what this is meant to practice: **wrap a piece of procedural hardware code into a class, then use a base-class reference to string it together with the detection algorithm into a single pipeline.**
+> Declarations go in the header file, implementation goes in the source file, and every header file needs `#pragma once` — a habit you already learned in Stage 1, and one you'll keep using in every stage from here on.
