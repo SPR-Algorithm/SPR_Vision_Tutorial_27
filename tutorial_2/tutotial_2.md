@@ -735,9 +735,9 @@ b/c 1000个元素的vector
 
 ### std::move 这个对象后面的资源可以被接管
 
-| Copy                  | Move            |
-| --------------------- | --------------- |
-| A. large data         | A data 转交资源 |
+| Copy                  | Move              |
+| --------------------- | ----------------- |
+| A. large data         | A data 转交资源   |
 | B. another large data | B same large data |
 
 move 后对象仍然合法，但不要依赖于它原来的内容
