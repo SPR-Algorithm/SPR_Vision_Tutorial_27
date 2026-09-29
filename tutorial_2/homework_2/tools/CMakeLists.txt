@@ -4,3 +4,5 @@ add_library(tools OBJECT
     img_tools.cpp
     logger.cpp
 )
+
+target_link_libraries(tools PUBLIC fmt::fmt)
