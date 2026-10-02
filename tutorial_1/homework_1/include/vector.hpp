@@ -9,6 +9,6 @@ namespace rm{
     double dot (const Vector& a, const Vector& b);
     Vector scale (const Vector& v, double k);
     Vector normalize (const Vector& v);
-    double angelBetween (const Vector& a, const Vector& b);
+    double angleBetween (const Vector& a, const Vector& b);
 
 }

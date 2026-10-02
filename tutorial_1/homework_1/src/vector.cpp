@@ -41,8 +41,8 @@ namespace rm{
     } 
     Vector normalize (const Vector &v){
         double len = length (v);
-        if (len==0.0){
-            throw std::invalid_argument ("normalize: zero vector cannot be normalized");
+        if (len<1e-9){
+            return Vector(v.size(),0.0);
         }
         return scale (v, 1.0/len);
     }
@@ -52,8 +52,8 @@ namespace rm{
         }
         double lena= length (a);
         double lenb= length(b);
-        if (lena==0.0||lenb==0.0){
-            throw std::invalid_argument("angelBetween: zero vector has no angel");
+        if (lena<1e-9||lenb<1e-9){
+            return 0.0;
         }
         double cos_theta = dot(a,b)/(lena*lenb);
         if (cos_theta>1.0) cos_theta=1.0;
