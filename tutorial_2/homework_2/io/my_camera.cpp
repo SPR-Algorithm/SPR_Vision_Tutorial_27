@@ -76,6 +76,12 @@ namespace io {
         cap_.set(cv::CAP_PROP_GAIN, gain);
     }
 
+    void UsbCamera::read(cv::Mat& img, std::chrono::steady_clock::time_point& timestamp)
+    {
+        cap_ >> img;
+        timestamp = std::chrono::steady_clock::now();
+    }
+
     HikCamera::HikCamera(double exposure_ms, double gain, const std::string& /*vid_pid*/)
     {
         MV_CC_DEVICE_INFO_LIST device_list;
