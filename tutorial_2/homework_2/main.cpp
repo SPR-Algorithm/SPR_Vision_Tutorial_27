@@ -38,7 +38,17 @@ int main(int argc, char* argv[])
         last = now;
 
         for (const auto& armor : armors) {
-            tools::draw_points(img, armor.points, {0, 255, 0});
+            cv::Scalar draw_color = {0, 255, 0};
+            if(armor.color == auto_aim::red) draw_color = {0, 0, 255};
+            else if(armor.color == auto_aim::blue) draw_color = {255, 0, 0};
+
+            tools::draw_points(img, armor.points, draw_color);
+
+            tools::draw_text(img, auto_aim::COLORS[armor.color],
+                             cv::Point(armor.points[0]), draw_color);
+            
+            // tools::draw_points(img, armor.points, {0, 255, 0});
+
         }
         tools::draw_text(img, "fps: " + std::to_string(static_cast<int>(fps)), {10, 30});
         tools::logger()->info("fps: {:.1f}, armors: {}", fps, armors.size());
