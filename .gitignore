@@ -19,8 +19,6 @@ compile_commands.json
 *.i
 *.s
 *.a
-*.so
-*.dylib
 *.out
 
 # ---- 示例程序生成的可执行文件 ----
@@ -31,3 +29,4 @@ tutorial_1/example/cmake/vec2_demo
 tutorial_2/example/opencv/armor_detect
 tutorial_2/example/opencv/result.png
 tutorial_2/example/opencv/debug_stages.png
+tutorial_2/homework_2/logs
