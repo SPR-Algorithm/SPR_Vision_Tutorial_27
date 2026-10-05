@@ -1,0 +1,19 @@
+# CMake generation dependency list for this directory.
+C:/Users/Lenovo/SPR_Vision_Tutorial_27/build/_deps/googletest-src/googletest/CMakeLists.txt
+C:/Users/Lenovo/SPR_Vision_Tutorial_27/build/_deps/googletest-src/googletest/cmake/Config.cmake.in
+C:/Users/Lenovo/SPR_Vision_Tutorial_27/build/_deps/googletest-src/googletest/cmake/gtest.pc.in
+C:/Users/Lenovo/SPR_Vision_Tutorial_27/build/_deps/googletest-src/googletest/cmake/gtest_main.pc.in
+C:/Users/Lenovo/SPR_Vision_Tutorial_27/build/_deps/googletest-src/googletest/cmake/internal_utils.cmake
+D:/share/cmake-4.4/Modules/BasicConfigVersion-AnyNewerVersion.cmake.in
+D:/share/cmake-4.4/Modules/CMakePackageConfigHelpers.cmake
+D:/share/cmake-4.4/Modules/CheckCSourceCompiles.cmake
+D:/share/cmake-4.4/Modules/CheckIncludeFile.cmake
+D:/share/cmake-4.4/Modules/CheckLibraryExists.cmake
+D:/share/cmake-4.4/Modules/FindPackageHandleStandardArgs.cmake
+D:/share/cmake-4.4/Modules/FindPackageMessage.cmake
+D:/share/cmake-4.4/Modules/FindPython/Support.cmake
+D:/share/cmake-4.4/Modules/FindPython3.cmake
+D:/share/cmake-4.4/Modules/FindThreads.cmake
+D:/share/cmake-4.4/Modules/Internal/CheckCommon.cmake
+D:/share/cmake-4.4/Modules/Internal/CheckSourceCompiles.cmake
+D:/share/cmake-4.4/Modules/WriteBasicConfigVersionFile.cmake

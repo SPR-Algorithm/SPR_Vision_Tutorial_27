@@ -1,0 +1,22 @@
+# CMake generation dependency list for this directory.
+C:/Users/Lenovo/SPR_Vision_Tutorial_27/build/_deps/googletest-subbuild/CMakeFiles/4.4.4/CMakeSystem.cmake
+C:/Users/Lenovo/SPR_Vision_Tutorial_27/build/_deps/googletest-subbuild/CMakeLists.txt
+C:/Users/Lenovo/SPR_Vision_Tutorial_27/build/_deps/googletest-subbuild/googletest-populate-prefix/tmp/googletest-populate-mkdirs.cmake
+D:/share/cmake-4.4/Modules/CMakeDetermineSystem.cmake
+D:/share/cmake-4.4/Modules/CMakeGenericSystem.cmake
+D:/share/cmake-4.4/Modules/CMakeInitializeConfigs.cmake
+D:/share/cmake-4.4/Modules/CMakeSystem.cmake.in
+D:/share/cmake-4.4/Modules/CMakeSystemSpecificInformation.cmake
+D:/share/cmake-4.4/Modules/CMakeSystemSpecificInitialize.cmake
+D:/share/cmake-4.4/Modules/ExternalProject.cmake
+D:/share/cmake-4.4/Modules/ExternalProject/PatchInfo.txt.in
+D:/share/cmake-4.4/Modules/ExternalProject/RepositoryInfo.txt.in
+D:/share/cmake-4.4/Modules/ExternalProject/UpdateInfo.txt.in
+D:/share/cmake-4.4/Modules/ExternalProject/cfgcmd.txt.in
+D:/share/cmake-4.4/Modules/ExternalProject/download.cmake.in
+D:/share/cmake-4.4/Modules/ExternalProject/extractfile.cmake.in
+D:/share/cmake-4.4/Modules/ExternalProject/mkdirs.cmake.in
+D:/share/cmake-4.4/Modules/ExternalProject/shared_internal_commands.cmake
+D:/share/cmake-4.4/Modules/Platform/Windows-Initialize.cmake
+D:/share/cmake-4.4/Modules/Platform/Windows.cmake
+D:/share/cmake-4.4/Modules/Platform/WindowsPaths.cmake

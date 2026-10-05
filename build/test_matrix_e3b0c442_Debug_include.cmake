@@ -1,0 +1,5 @@
+if(EXISTS "C:/Users/Lenovo/SPR_Vision_Tutorial_27/build/test_matrix_e3b0c442_Debug_tests.cmake")
+  include("C:/Users/Lenovo/SPR_Vision_Tutorial_27/build/test_matrix_e3b0c442_Debug_tests.cmake")
+else()
+  add_test(test_matrix_NOT_BUILT test_matrix_NOT_BUILT)
+endif()

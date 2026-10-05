@@ -1,0 +1,44 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="18.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <CustomBuild Include="C:\Users\Lenovo\SPR_Vision_Tutorial_27\build\_deps\googletest-subbuild\CMakeFiles\a629697a73b4d74a56a40bc5eb8f675e\googletest-populate-mkdir.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\Lenovo\SPR_Vision_Tutorial_27\build\_deps\googletest-subbuild\CMakeFiles\a629697a73b4d74a56a40bc5eb8f675e\googletest-populate-download.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\Lenovo\SPR_Vision_Tutorial_27\build\_deps\googletest-subbuild\CMakeFiles\a629697a73b4d74a56a40bc5eb8f675e\googletest-populate-update.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\Lenovo\SPR_Vision_Tutorial_27\build\_deps\googletest-subbuild\CMakeFiles\a629697a73b4d74a56a40bc5eb8f675e\googletest-populate-patch.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\Lenovo\SPR_Vision_Tutorial_27\build\_deps\googletest-subbuild\CMakeFiles\a629697a73b4d74a56a40bc5eb8f675e\googletest-populate-configure.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\Lenovo\SPR_Vision_Tutorial_27\build\_deps\googletest-subbuild\CMakeFiles\a629697a73b4d74a56a40bc5eb8f675e\googletest-populate-build.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\Lenovo\SPR_Vision_Tutorial_27\build\_deps\googletest-subbuild\CMakeFiles\a629697a73b4d74a56a40bc5eb8f675e\googletest-populate-install.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\Lenovo\SPR_Vision_Tutorial_27\build\_deps\googletest-subbuild\CMakeFiles\a629697a73b4d74a56a40bc5eb8f675e\googletest-populate-test.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\Lenovo\SPR_Vision_Tutorial_27\build\_deps\googletest-subbuild\CMakeFiles\14dba5feb418e3d82a03bf20e8f15c6c\googletest-populate-complete.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\Lenovo\SPR_Vision_Tutorial_27\build\_deps\googletest-subbuild\CMakeFiles\3d81ae83af960fca7abbdb2b6e87b4a4\googletest-populate.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\Lenovo\SPR_Vision_Tutorial_27\build\_deps\googletest-subbuild\CMakeLists.txt" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="C:\Users\Lenovo\SPR_Vision_Tutorial_27\build\_deps\googletest-subbuild\CMakeFiles\googletest-populate" />
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="CMake Rules">
+      <UniqueIdentifier>{A8226A41-FFA9-3858-946D-5D889736A455}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+</Project>

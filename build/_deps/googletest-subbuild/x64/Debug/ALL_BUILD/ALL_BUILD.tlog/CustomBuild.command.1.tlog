@@ -1,0 +1,10 @@
+^C:\USERS\LENOVO\SPR_VISION_TUTORIAL_27\BUILD\_DEPS\GOOGLETEST-SUBBUILD\CMAKELISTS.TXT
+setlocal
+D:\bin\cmake.exe -SC:/Users/Lenovo/SPR_Vision_Tutorial_27/build/_deps/googletest-subbuild -BC:/Users/Lenovo/SPR_Vision_Tutorial_27/build/_deps/googletest-subbuild --check-stamp-file C:/Users/Lenovo/SPR_Vision_Tutorial_27/build/_deps/googletest-subbuild/CMakeFiles/generate.stamp
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd

@@ -1,0 +1,10 @@
+^C:\USERS\LENOVO\SPR_VISION_TUTORIAL_27\BUILD\CMAKEFILES\E56791FDA20A487345185A16EF48029D\GENERATE.STAMP.RULE
+setlocal
+D:\bin\cmake.exe -SC:/Users/Lenovo/SPR_Vision_Tutorial_27 -BC:/Users/Lenovo/SPR_Vision_Tutorial_27/build --check-stamp-list CMakeFiles/generate.stamp.list --vs-solution-file C:/Users/Lenovo/SPR_Vision_Tutorial_27/build/rm_vector_matrix_demo.slnx
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd

@@ -1,0 +1,13 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="18.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <CustomBuild Include="C:\Users\Lenovo\SPR_Vision_Tutorial_27\build\_deps\googletest-subbuild\CMakeFiles\3d81ae83af960fca7abbdb2b6e87b4a4\generate.stamp.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="CMake Rules">
+      <UniqueIdentifier>{A8226A41-FFA9-3858-946D-5D889736A455}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+</Project>
