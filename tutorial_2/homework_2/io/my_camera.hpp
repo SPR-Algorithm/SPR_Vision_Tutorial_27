@@ -25,8 +25,8 @@ namespace io {
     class UsbCamera : public CameraBase {
         public:
             UsbCamera(double exposure_ms, double gain, const std::string& vid_pid);
-            // ~UsbCamera() override;
-            void read(cv::Mat& img, std::chrono::steady_clock::time_point& timestamp) override;
+            void read(cv::Mat& img,
+                      std::chrono::steady_clock::time_point& timestamp) override;
         private:
             cv::VideoCapture cap_;
     };
