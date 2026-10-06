@@ -1,0 +1,7 @@
+camera_name: "UsbCamera"
+exposure_ms: 3
+gain: 16.9
+device_id: 0
+vid_pid: "NO"
+flip_code: 2
+
