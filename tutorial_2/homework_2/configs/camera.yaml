@@ -1,5 +1,5 @@
-camera_name: "usb"
+camera_name: "hikrobot"
 exposure_ms: 3
 gain: 16.9
-vid_pid: "13d3:56ff"
+vid_pid: "2bdf:0001"
 flip_code: 2
