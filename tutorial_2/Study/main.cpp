@@ -17,28 +17,24 @@ int main(int argc, char * argv[])
     "{yolo y         | configs/yolo.yaml   | YOLO 配置文件的路径 }";
 
   cv::CommandLineParser cli(argc, argv, keys);
-
   if (cli.has("help")) {
     cli.printMessage();
     return 0;
   }
-
   auto camera_config = cli.get<std::string>("camera");
   auto yolo_config = cli.get<std::string>("yolo");
 
   // 初始化相机、yolo类
-  io::Camera camera("hik");
+  io::Camera camera(camera_config);
   auto_aim::YOLO yolo(yolo_config, true);
 
   int frame_count = 0;
   std::chrono::steady_clock::time_point timestamp;
 
-  while (true) { 
+  while (true) {
     cv::Mat img;
-
     camera.read(img, timestamp);
-
-    if (img.empty()) {continue;}
+    if (img.empty()) continue;
 
     // 调用yolo识别装甲板
     auto begin = std::chrono::steady_clock::now();

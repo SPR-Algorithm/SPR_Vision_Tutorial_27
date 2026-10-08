@@ -36,7 +36,7 @@ int main(){
     cv::waitKey(0);*/
 
     //视频
-    /*cv::VideoCapture cap(0,cv::CAP_V4L2);
+    cv::VideoCapture cap(0,cv::CAP_V4L2);
     //cv::VideoCapture cap(0);
     std::cout<<"0"<<std::endl;
     if (!cap.isOpened()) {
@@ -59,9 +59,8 @@ int main(){
         cv::imshow("sxt",frame);
             cv::waitKey(1)==27;
     }
-    */
-   
-    //阈值
+    
+    //阈值 
     /*cv::Mat yuantu=cv::imread("blue_5.png");
     cv::Mat tu=yuantu.clone();
     cv::Mat gray;
@@ -77,7 +76,7 @@ int main(){
     return 0; */
 
     //灰度图+高斯降噪+二值化
-    cv::Mat frame;
+    /*cv::Mat frame;
     cv::VideoCapture cap(0,cv::CAP_V4L2);
     while(true){
     cap>>frame;
@@ -94,10 +93,33 @@ int main(){
     cv::threshold(GaussianBlur,binary,120,255,cv::THRESH_BINARY);//二值化
     imshow("binary",binary);
         cv::waitKey(30);
-    }
+    }*/
 
-    /*std::vector<std::vector<cv::Point>>contours;
-    cv::findContours(binary,contours,cv::RETR_EXTERNAL,cv::CHAIN_APPROX_NONE);
+    /*cv::Mat frame=cv::imread("blue_5.png");
+    //cv::VideoCapture cap(0,cv::CAP_V4L2);
+    //cap>>frame;
+    cv::Mat gray;
+    cv::cvtColor(frame,gray,cv::COLOR_BGR2GRAY);//灰度图
+    cv::Mat GaussianBlur;
+    cv::GaussianBlur(gray,GaussianBlur, {5, 5}, 0);//高斯降噪
+    cv::Mat edge;
+    cv::Canny(GaussianBlur,edge,50,150);//edge
+    cv::imshow("gray",gray);
+    cv::imshow("GaussianBlur",GaussianBlur);
+    cv::imshow("edge",edge);
+    cv::Mat binary;
+    cv::threshold(GaussianBlur,binary,120,255,cv::THRESH_BINARY);//二值化
+    imshow("binary",binary);
+    std::vector<std::vector<cv::Point>>contours;
+    cv::findContours(binary,contours,cv::RETR_EXTERNAL,cv::CHAIN_APPROX_NONE); //获取轮廓点
+
+    cv::Mat drawcontours=frame.clone();
+    for(const auto & contours:contour){
+        tools::draw_points(drawcontours,contour);
+    }
+    cv::resize(drawcontours,drawcontours,{},0.5,0.5);
+    cv::imshow("drawcontours",drawcontours);
+    cv::waitKey(0);
     std::vector<cv::RotateRect>rotated;
     for(const auto&contour:contours){
         auto rotated=cv::minAreaRect(contour);

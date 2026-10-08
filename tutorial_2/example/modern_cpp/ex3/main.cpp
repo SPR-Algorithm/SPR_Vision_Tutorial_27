@@ -8,7 +8,7 @@ cv::Mat addNoiseColor(const cv::Mat & src)
   cv::Mat dst = src;
 
   // 创建随机噪声
-  cv::Mat noise(src.rows, src.cols, CV_8UC1);
+  cv::Mat noise(src.rows, src.cols, CV_8UC3);
   cv::randu(noise, 0, 50);
 
   // 给图像加入噪声
