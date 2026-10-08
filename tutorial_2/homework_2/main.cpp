@@ -28,7 +28,8 @@ int main(int argc, char * argv[])
 
   // 初始化相机、yolo类
   io::Camera camera("hik");
-  //io::Camera camera(camera_config);
+  //io::Camera camera("usb");
+  //io::Camera camera("replay");
   auto_aim::YOLO yolo(yolo_config, true);
 
   int frame_count = 0;
