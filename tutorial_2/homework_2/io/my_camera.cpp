@@ -2,20 +2,27 @@
 #include<iostream>
 #include "hikrobot/include/MvCameraControl.h"
 namespace io{
-bool HikCamera::open(const std::string & config){
-    int ret;
-    MV_CC_DEVICE_INFO_LIST device_list;
+
+HikCamera::~HikCamera() {
+        close();
+} 
+
+bool  HikCamera::open(const std::string & config){
+    MV_CC_DEVICE_INFO_LIST device_list ={};
     ret = MV_CC_EnumDevices(MV_USB_DEVICE, &device_list);
+    
+    std::cout << "EnumDevices ret = " << ret
+          << ", nDeviceNum = " << device_list.nDeviceNum << std::endl;
+
     if (ret != MV_OK)  {
         std::cout<<"打开相机失败"<<std::endl;
       return false;
     }
-  
+
     if (device_list.nDeviceNum == 0) {
         std::cout<<"没设备可用，打开失败"<<std::endl;
       return false;
     }
-  
     ret = MV_CC_CreateHandle(&handle, device_list.pDeviceInfo[0]);
     if (ret != MV_OK) {
         std::cout<<"创建句柄失败"<<std::endl;
@@ -35,6 +42,7 @@ bool HikCamera::open(const std::string & config){
     MV_CC_SetFloatValue(handle, "Gain", 20);
     MV_CC_SetFrameRate(handle, 60);  
     std::cout<<"建立通信连接,打开相机"<<std::endl;
+    ret = MV_CC_StartGrabbing(handle);  // 开始抓取图像
     return true;
 }
 
@@ -66,7 +74,7 @@ cv::Mat HikCamera::transfer(MV_FRAME_OUT& raw) // 将海康原始图像数据转
 }
  
 bool HikCamera::read(cv::Mat& frame,std::chrono::steady_clock::time_point & timestamp){
- int ret = MV_CC_StartGrabbing(handle);  // 开始抓取图像
+
     if (ret != MV_OK) {
       return false;
     }
@@ -134,6 +142,27 @@ bool UsbCamera::close(){
     return false;
 }
 
+bool ReplayCamera::open(const std::string & config){
+  //cap_ = std::make_unique<cv::VideoCapture>("/home/rsve/test/test1.mp4");
+  cap_ = std::make_unique<cv::VideoCapture>("/home/rsve/test/SPR_Vision_Tutorial_27/tutorial_2/Study/demo.mp4");
+  //cv::VideoCapture cap_("/home/rsve/test/test.mp4");
+  return true;
+}
+bool ReplayCamera::read(cv::Mat& frame,std::chrono::steady_clock::time_point & timestamp){
+  timestamp = std::chrono::steady_clock::now();
+  cap_ -> read(frame);
+  if (frame.empty()){std::cout<<"2"<<std::endl;return false;}
+  return true;
+}
+
+bool ReplayCamera::close(){
+    if (cap_) {
+        cap_->release();
+        cap_.reset();
+    }
+    return true; 
+}
+
 //Camera
 Camera::Camera(const std::string & config) {
      if (config == "hik") {
@@ -141,6 +170,9 @@ Camera::Camera(const std::string & config) {
   }
      if (config == "usb") {
     impl = std::make_unique<UsbCamera>();
+}
+if (config == "replay") {
+    impl = std::make_unique<ReplayCamera>();
 }
      impl->open(config);
 }

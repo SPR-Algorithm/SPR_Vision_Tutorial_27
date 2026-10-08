@@ -13,12 +13,16 @@ namespace io{
   };
   class HikCamera : public CameraBase{
     public:
+      HikCamera()=default;
+      ~HikCamera() override; 
+
       bool open(const std::string & config) override;
       bool read(cv::Mat& frame,std::chrono::steady_clock::time_point & timestamp) override;
       bool close() override;
     private:
       cv::Mat transfer(MV_FRAME_OUT& raw);
-      void* handle=nullptr;
+      void* handle;
+      int ret=0;
   };
   class UsbCamera : public CameraBase{
     public:
@@ -29,6 +33,15 @@ namespace io{
       cv::VideoCapture cap;
   };
 
+  class ReplayCamera : public CameraBase{
+    public:
+      bool open(const std::string & config) override;
+      bool read(cv::Mat& frame,std::chrono::steady_clock::time_point & timestamp) override;
+      bool close() override;
+    private:
+      std::unique_ptr<cv::VideoCapture> cap_; 
+  };
+  
   class Camera{
     public:
     Camera(const std::string & config);

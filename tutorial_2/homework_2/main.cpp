@@ -28,6 +28,7 @@ int main(int argc, char * argv[])
 
   // 初始化相机、yolo类
   io::Camera camera("hik");
+  //io::Camera camera(camera_config);
   auto_aim::YOLO yolo(yolo_config, true);
 
   int frame_count = 0;
@@ -59,7 +60,7 @@ int main(int argc, char * argv[])
 
     // 显示图像
     cv::imshow("img", img);
-    if (cv::waitKey(1) == 'q') {
+    if (cv::waitKey(30) == 'q') {
       break;
     }
   }
