@@ -1,0 +1,45 @@
+# ===== 构建产物 =====
+build/
+cmake-build-*/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+*.o
+*.a
+*.so
+*.so.*
+*.dylib
+*.dll
+*.lib
+*.exe
+
+# ===== CMake 生成 =====
+compile_commands.json
+CTestTestfile.cmake
+Testing/
+install_manifest.txt
+
+# ===== 运行时输出 =====
+imgs/
+logs/
+*.log
+
+# ===== 编辑器 / IDE =====
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.clangd/
+.cache/
+
+# ===== 操作系统 =====
+.DS_Store
+Thumbs.db
+
+# ===== 临时文件 =====
+*.tmp
+*.bak
+*.orig
+*.rej
