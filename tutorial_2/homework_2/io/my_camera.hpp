@@ -36,6 +36,17 @@ private:
     int64_t frame_count_ = 0;
 };
 
+class ReplayCamera : public CameraBase {
+public:
+    ReplayCamera() = default;
+    bool Open(const YAML::Node& cfg) override;
+    bool Read(cv::Mat& image, uint64_t& timestamp) override;
+    void Close() override;
+private:
+    std::vector<cv::Mat> frames_;   // 预读入的所有帧
+    size_t frame_idx_ = 0;          // 当前播放到第几帧
+};
+
 class Camera {
 public:
     Camera();

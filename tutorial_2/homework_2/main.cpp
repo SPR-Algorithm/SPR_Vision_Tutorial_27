@@ -7,6 +7,7 @@
 #include <chrono>
 #include <vector>
 #include <list>
+#include <iostream>
 
 int main(int argc, char** argv) {
     // 解析命令行参数，支持显式指定两个yaml路径，默认读configs下的配置
@@ -48,8 +49,19 @@ int main(int argc, char** argv) {
         // ---------------- 第三处TODO：画装甲板角点、显示图像 ----------------
         // 把所有识别到的装甲板四个角点画到图上
         for (const auto& armor : armors) {
-            tools::draw_points(img, armor.points);
-        }
+        // 画角点
+         tools::draw_points(img, armor.points);
+
+        // ⭐ 画号数文字： 置信度 颜色 号数 大小
+         std::string info = fmt::format("{:.2f}", armor.confidence);
+         info += " " + auto_aim::COLORS[armor.color];
+         info += " " + auto_aim::ARMOR_NAMES[armor.name];
+         info += " " + auto_aim::ARMOR_TYPES[armor.type];
+         std::cout << "center=(" << armor.center.x << "," << armor.center.y
+                  << ") info=[" << info << "] img_size=" << img.cols << "x" << img.rows
+                  << std::endl;
+         tools::draw_text(img, info, armor.center, {0, 255, 0});
+         }
 
         // 统计FPS，每30帧打印一次平均帧率
         frame_cnt++;
