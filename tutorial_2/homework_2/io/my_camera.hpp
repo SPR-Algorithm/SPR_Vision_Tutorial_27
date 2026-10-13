@@ -1,8 +1,10 @@
 #pragma once
 
-#include <opencv2/opencv.hpp>
+#include <chrono>
 #include <memory>
 #include <string>
+
+#include <opencv2/opencv.hpp>
 
 namespace io
 {
@@ -11,8 +13,9 @@ class CameraBase
 {
 public:
   virtual ~CameraBase() = default;
+
   virtual bool open() = 0;
-  virtual bool read(cv::Mat & img) = 0;
+  virtual bool read(cv::Mat & img, std::chrono::steady_clock::time_point & timestamp) = 0;
   virtual void close() = 0;
 };
 
@@ -25,7 +28,7 @@ public:
   ~HikCamera() override;
 
   bool open() override;
-  bool read(cv::Mat & img) override;
+  bool read(cv::Mat & img, std::chrono::steady_clock::time_point & timestamp) override;
   void close() override;
 
 private:
@@ -37,6 +40,8 @@ private:
   std::string vid_pid_;
   int flip_code_;
   void * handle_ = nullptr;
+  bool opened_ = false;
+  bool grabbing_ = false;
 };
 
 class UsbCamera : public CameraBase
@@ -46,7 +51,7 @@ public:
   ~UsbCamera() override;
 
   bool open() override;
-  bool read(cv::Mat & img) override;
+  bool read(cv::Mat & img, std::chrono::steady_clock::time_point & timestamp) override;
   void close() override;
 
 private:
@@ -58,15 +63,13 @@ private:
 class Camera
 {
 public:
-  Camera(
-    const std::string & camera_name, double exposure_ms, double gain,
-    const std::string & vid_pid, int flip_code, int usb_index = 0);
+  explicit Camera(const std::string & config_path);
   ~Camera();
 
-  bool read(cv::Mat & img);
+  bool read(cv::Mat & img, std::chrono::steady_clock::time_point & timestamp);
 
 private:
   std::unique_ptr<CameraBase> camera_;
 };
 
-}
+}  // namespace io

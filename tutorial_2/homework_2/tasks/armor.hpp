@@ -130,5 +130,4 @@ struct Armor
 };
 
 }  // namespace auto_aim
-
 #endif  // AUTO_AIM__ARMOR_HPP

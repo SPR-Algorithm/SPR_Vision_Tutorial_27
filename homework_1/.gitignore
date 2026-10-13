@@ -1,0 +1,32 @@
+# ---- 编辑器 ----
+.vscode/
+
+# ---- 编辑器配置里的本机绝对路径（clangd 兜底参数）----
+.clangd
+
+# ---- CMake 构建目录 / 生成文件（任意层级）----
+build/
+build-*/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+install_manifest.txt
+compile_commands.json
+.cache/
+
+# ---- 编译中间产物 ----
+*.o
+*.i
+*.s
+*.a
+*.so
+*.dylib
+*.out
+*.exe
+# ---- 示例程序生成的可执行文件 ----
+tutorial_1/example/gpp/hello
+tutorial_1/example/gpp/multi/app
+tutorial_1/example/gpp/multi/app_broken
+tutorial_1/example/cmake/vec2_demo
+tutorial_2/example/opencv/armor_detect
+tutorial_2/example/opencv/result.png
