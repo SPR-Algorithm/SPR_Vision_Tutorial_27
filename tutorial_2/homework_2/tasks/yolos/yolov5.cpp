@@ -247,7 +247,9 @@ void YOLOV5::draw_detections(
 void YOLOV5::save(const Armor & armor) const
 {
   auto file_name = fmt::format("{:%Y-%m-%d_%H-%M-%S}", std::chrono::system_clock::now());
-  auto img_path = fmt::format("{}/{}_{}.jpg", save_path_, armor.name, file_name);
+  // fmt 10 起枚举不再隐式格式化，需要显式转换
+  auto img_path = fmt::format(
+    "{}/{}_{}.jpg", save_path_, static_cast<int>(armor.name), file_name);
   cv::imwrite(img_path, tmp_img_);
 }
 

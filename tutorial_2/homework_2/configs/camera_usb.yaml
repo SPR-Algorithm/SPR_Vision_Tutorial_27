@@ -1,0 +1,12 @@
+# 用电脑自带 / USB 摄像头测试。
+# 用法：./build/main -c configs/camera_usb.yaml
+#
+# 注意：exposure_ms 和 gain 这两项 UsbCamera 用不上，
+#       但 Camera 外观类会统一读出来，缺了会直接报错退出，所以别删。
+camera_name: "usb"
+exposure_ms: 3
+gain: 16.9
+# 空字符串 = 直接用 /dev/video0（打不开会自动往后试到 video5）。
+# 想指定某一路，可以填它的 vid:pid，例如 "0bda:5634"
+vid_pid: ""
+flip_code: -1

@@ -1,0 +1,11 @@
+# 离线测试用：用录像文件冒充相机，验证「取图 → 识别 → 画框」整条流水线。
+# 用法：./build/main -c configs/camera_replay.yaml
+camera_name: "replay"
+exposure_ms: 3
+gain: 16.9
+vid_pid: "2bdf:0001"
+flip_code: -1
+# 直接指到仓库里的原始录像（绝对路径，最不容易出错）。
+# 如果你把仓库整体挪走，也可以换回相对路径："../example/opencv/demo/demo.mp4"
+# 放完整段会自动结束（总帧数由 ReplayCamera 从视频里读出来）。
+replay_path: "/home/rsve/gitdemo/SPR_Vision_Tutorial_27/tutorial_2/example/opencv/demo/demo.mp4"

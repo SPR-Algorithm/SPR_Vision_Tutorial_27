@@ -5,4 +5,5 @@ add_library(tools OBJECT
     logger.cpp
 )
 
-target_link_libraries(tools PUBLIC fmt::fmt)
+# logger.cpp 用到 fmt 和 spdlog
+target_link_libraries(tools PUBLIC fmt::fmt spdlog::spdlog)

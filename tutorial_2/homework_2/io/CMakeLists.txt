@@ -17,4 +17,11 @@ else()
   message(FATAL_ERROR "Unsupported architecture: ${CMAKE_HOST_SYSTEM_PROCESSOR}!")
 endif()
 
-target_link_libraries(io MvCameraControl usb-1.0 yaml-cpp)
+# io 用到 OpenCV、tools（日志），以及海康 SDK / usb-1.0 / yaml-cpp
+target_link_libraries(io PUBLIC
+    MvCameraControl
+    usb-1.0
+    yaml-cpp
+    ${OpenCV_LIBS}
+    tools
+)
