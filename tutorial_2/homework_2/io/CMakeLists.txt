@@ -8,7 +8,7 @@ add_library(io STATIC
 )
 
 # hikrobot
-target_include_directories(io PUBLIC hikrobot/include)
+target_include_directories(io PUBLIC hikrobot/include ${CMAKE_SOURCE_DIR})
 if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64")
   target_link_directories(io PUBLIC hikrobot/lib/amd64)
 elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64")
