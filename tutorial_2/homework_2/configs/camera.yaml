@@ -1,5 +1,14 @@
 camera_name: "hikrobot"
+#camera_name: "usb"
 exposure_ms: 3
 gain: 16.9
 vid_pid: "2bdf:0001"
-flip_code: 2
+flip_code: 0
+
+device_id: 0
+usb_fourcc: "MJPG"
+usb_width: 640
+usb_height: 480
+usb_fps: 30
+exposure_ms: 2
+gain: 15.0

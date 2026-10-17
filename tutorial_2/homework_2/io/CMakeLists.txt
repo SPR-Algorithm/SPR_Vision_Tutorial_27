@@ -2,7 +2,6 @@ cmake_minimum_required(VERSION 3.16)
 
 find_package(yaml-cpp REQUIRED)
 
-# 创建目标 io
 add_library(io STATIC 
     my_camera.cpp
 )
@@ -17,4 +16,4 @@ else()
   message(FATAL_ERROR "Unsupported architecture: ${CMAKE_HOST_SYSTEM_PROCESSOR}!")
 endif()
 
-target_link_libraries(io MvCameraControl usb-1.0 yaml-cpp)
+target_link_libraries(io PUBLIC ${OpenCV_LIBS} tools yaml-cpp MvCameraControl usb-1.0)
