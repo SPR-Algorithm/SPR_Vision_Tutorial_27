@@ -26,17 +26,17 @@ bool UsbCamera::read(cv::Mat & img, std::chrono::steady_clock::time_point & time
 
 // ---------- HikCamera ----------
 
-// 把 SDK 返回的原始帧转成彩色 cv::Mat（Bayer 图 -> BGR）
+// 把 SDK 返回的原始帧转成彩色 cv::Mat（Bayer 图 -> RGB）
 static cv::Mat transfer(MV_FRAME_OUT & raw)
 {
     cv::Mat img(cv::Size(raw.stFrameInfo.nWidth, raw.stFrameInfo.nHeight), CV_8U, raw.pBufAddr);
 
     auto pixel_type = raw.stFrameInfo.enPixelType;
     const static std::unordered_map<MvGvspPixelType, cv::ColorConversionCodes> type_map = {
-        {PixelType_Gvsp_BayerGR8, cv::COLOR_BayerGR2BGR},
-        {PixelType_Gvsp_BayerRG8, cv::COLOR_BayerRG2BGR},
-        {PixelType_Gvsp_BayerGB8, cv::COLOR_BayerGB2BGR},
-        {PixelType_Gvsp_BayerBG8, cv::COLOR_BayerBG2BGR}};
+        {PixelType_Gvsp_BayerGR8, cv::COLOR_BayerGR2RGB},
+        {PixelType_Gvsp_BayerRG8, cv::COLOR_BayerRG2RGB},
+        {PixelType_Gvsp_BayerGB8, cv::COLOR_BayerGB2RGB},
+        {PixelType_Gvsp_BayerBG8, cv::COLOR_BayerBG2RGB}};
     cv::cvtColor(img, img, type_map.at(pixel_type));
 
     return img;
