@@ -32,10 +32,3 @@ add_executable(example io/example.cpp)
 target_link_libraries(main ${OpenCV_LIBS} fmt::fmt yaml-cpp tools io auto_aim)
 target_link_libraries(example ${OpenCV_LIBS} tools io)
 
-# 演示目标：读摄像头 -> 识别 -> 存图（不用 imshow，headless 可跑）
-add_executable(demo demo.cpp)
-target_link_libraries(demo ${OpenCV_LIBS} fmt::fmt yaml-cpp tools io auto_aim)
-
-# 读视频跑识别的演示（headless 存图，不影响 main/example/demo）
-add_executable(video_demo video_demo.cpp)
-target_link_libraries(video_demo ${OpenCV_LIBS} fmt::fmt yaml-cpp tools auto_aim)
