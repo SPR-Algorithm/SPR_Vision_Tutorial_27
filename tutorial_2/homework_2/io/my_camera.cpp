@@ -122,11 +122,13 @@ void HikCamera::Close() {
 // ==================== UsbCamera 实现（虚拟机可跑，方便无硬件自测） ====================
 bool UsbCamera::Open(const YAML::Node& cfg) {
     int index = tools::read<int>(cfg, "index", 0);
-    int width = tools::read<int>(cfg, "width", 640);
-    int height = tools::read<int>(cfg, "height", 480);
+    int width = tools::read<int>(cfg, "width", 320);
+    int height = tools::read<int>(cfg, "height", 240);
 
-    cap_.open(index);
-    if (!cap_.isOpened()) {
+    cap_.open(index,cv::CAP_V4L2);
+cap_.set(cv::CAP_PROP_FOURCC, cv::VideoWriter::fourcc('M', 'J', 'P', 'G'));
+cap_.set(cv::CAP_PROP_FPS, 10);  
+ if (!cap_.isOpened()) {
         SPDLOG_ERROR("USB 相机打开失败, index={}", index);
         return false;
     }

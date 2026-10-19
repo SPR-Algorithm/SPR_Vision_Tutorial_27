@@ -1,7 +1,7 @@
-camera_name: "hikrobot"
+camera_name: "usb_camera"
 exposure_ms: 3
 gain: 16.9
-vid_pid: "2bdf:0001"
+vid_pid: "0:0"
 flip_code: -1
-camera_type: "hik"
-replay_path:"assets/replay"
+camera_type: "usb"
+index: 0
