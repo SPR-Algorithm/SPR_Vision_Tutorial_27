@@ -1,0 +1,5 @@
+camera_name: "usb"
+exposure_ms: 3
+gain: 16.9
+vid_pid: 0
+flip_code: 1

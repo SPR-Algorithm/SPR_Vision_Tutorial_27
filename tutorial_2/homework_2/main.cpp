@@ -1,4 +1,4 @@
-#include "io/camera.hpp"
+#include "io/my_camera.hpp"
 #include "opencv2/opencv.hpp"
 #include "tasks/yolo.hpp"
 #include "tools/img_tools.hpp"
