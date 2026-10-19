@@ -1,7 +1,7 @@
 #include "yolov5.hpp"
 
 #include <fmt/chrono.h>
-#include <yaml-cpp/yaml.h>
+#include "tools/yaml.hpp"
 
 #include <filesystem>
 
@@ -13,7 +13,7 @@ namespace auto_aim
 YOLOV5::YOLOV5(const std::string & config_path, bool debug)
 : debug_(debug)
 {
-  auto yaml = YAML::LoadFile(config_path);
+  auto yaml = tools::load(config_path);
 
   model_path_ = yaml["yolov5_model_path"].as<std::string>();
   device_ = yaml["device"].as<std::string>();

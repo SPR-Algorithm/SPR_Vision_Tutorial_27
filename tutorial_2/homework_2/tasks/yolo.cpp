@@ -1,6 +1,6 @@
 #include "yolo.hpp"
 
-#include <yaml-cpp/yaml.h>
+#include "tools/yaml.hpp"
 
 #include "yolos/yolov5.hpp"
 
@@ -8,8 +8,8 @@ namespace auto_aim
 {
 YOLO::YOLO(const std::string & config_path, bool debug)
 {
-  auto yaml = YAML::LoadFile(config_path);
-  auto yolo_name = yaml["yolo_name"].as<std::string>();
+  auto yaml = tools::load(config_path);
+  auto yolo_name = tools::read<std::string>(yaml, "yolo_name");
 
   if (yolo_name == "yolov5") {
     yolo_ = std::make_unique<YOLOV5>(config_path, debug);
