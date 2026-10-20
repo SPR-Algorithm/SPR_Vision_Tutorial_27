@@ -1,0 +1,1564 @@
+diff --git a/crates/talos-ipc/src/publisher.rs b/crates/talos-ipc/src/publisher.rs
+index cdb2bd6..b2101a8 100644
+--- a/crates/talos-ipc/src/publisher.rs
++++ b/crates/talos-ipc/src/publisher.rs
+@@ -1,7 +1,7 @@
+ use crate::layout::*;
+ use crate::shm::{ShmError, ShmRegion};
+ use crate::triple_buffer::TripleBufferProducer;
+-use std::sync::atomic::Ordering;
++use std::sync::atomic::{AtomicU32, Ordering};
+ use std::time::{SystemTime, UNIX_EPOCH};
+ 
+ pub struct ShmPublisher {
+@@ -203,8 +203,12 @@ impl ShmPublisher {
+ 
+     pub fn publish_runtime_state(&mut self, state: RuntimeState) {
+         unsafe {
+-            let meta = self.meta_region.as_mut::<ShmMetaRegion>();
+-            meta.runtime_state = state;
++            let runtime = self
++                .meta_region
++                .as_ptr()
++                .add(std::mem::offset_of!(ShmMetaRegion, runtime_state))
++                .cast::<RuntimeState>();
++            store_runtime_state(runtime, state);
+         }
+     }
+ 
+@@ -236,6 +240,58 @@ impl ShmPublisher {
+     }
+ }
+ 
++// The two optional Talos v2 diagnostics must not tear across byte carries. They remain
++// independent counters, rather than a coherent snapshot of the complete runtime state.
++unsafe fn store_runtime_state(runtime: *mut RuntimeState, state: RuntimeState) {
++    unsafe {
++        std::ptr::addr_of_mut!((*runtime).timestamp_ns).write(state.timestamp_ns);
++        std::ptr::addr_of_mut!((*runtime).following).write(state.following);
++        let pad = std::ptr::addr_of_mut!((*runtime)._pad).cast::<u8>();
++        std::ptr::copy_nonoverlapping(state._pad.as_ptr(), pad, 3);
++        std::ptr::copy_nonoverlapping(state._pad.as_ptr().add(11), pad.add(11), 44);
++        for offset in [3, 7] {
++            let counter = u32::from_le_bytes(state._pad[offset..offset + 4].try_into().unwrap());
++            AtomicU32::from_ptr(pad.add(offset).cast::<u32>())
++                .store(counter.to_le(), Ordering::Release);
++        }
++    }
++}
++
++#[cfg(test)]
++mod runtime_state_tests {
++    use super::*;
++
++    #[test]
++    fn diagnostic_counters_are_aligned_and_keep_v2_bytes() {
++        assert_eq!(std::mem::offset_of!(RuntimeState, _pad), 9);
++        assert_eq!(std::mem::align_of::<RuntimeState>(), 64);
++        let mut output = RuntimeState::default();
++        for count in [255u32, 256, 65535, 65536, u32::MAX] {
++            let mut state = RuntimeState {
++                timestamp_ns: 123,
++                following: 1,
++                _pad: [17; 55],
++            };
++            state._pad[3..7].copy_from_slice(&count.to_le_bytes());
++            state._pad[7..11].copy_from_slice(&(count / 2).to_le_bytes());
++            unsafe {
++                store_runtime_state(&mut output, state);
++            }
++            let base = std::ptr::addr_of_mut!(output).cast::<u8>();
++            for (offset, expected) in [(12, count), (16, count / 2)] {
++                let address = unsafe { base.add(offset) }.cast::<u32>();
++                assert_eq!((address as usize) % std::mem::align_of::<AtomicU32>(), 0);
++                let actual = unsafe { AtomicU32::from_ptr(address) }.load(Ordering::Acquire);
++                assert_eq!(u32::from_le(actual), expected);
++            }
++            assert_eq!(output.timestamp_ns, 123);
++            assert_eq!(output.following, 1);
++            assert_eq!(&output._pad[..3], &[17; 3]);
++            assert_eq!(&output._pad[11..], &[17; 44]);
++        }
++    }
++}
++
+ fn aux_f32_to_bytes(aux_f32: [f32; 4]) -> [u8; 16] {
+     let mut bytes = [0u8; 16];
+     for (i, value) in aux_f32.iter().enumerate() {
+diff --git a/crates/talos-ipc/src/shm.rs b/crates/talos-ipc/src/shm.rs
+index fe4de03..e3d3e84 100644
+--- a/crates/talos-ipc/src/shm.rs
++++ b/crates/talos-ipc/src/shm.rs
+@@ -3,9 +3,14 @@
+ //! 使用内存映射文件替代 POSIX 共享内存，纯 Rust 实现。
+ 
+ use memmap2::MmapMut;
+-use std::fs::OpenOptions;
+-use std::io::{self, Write};
++use std::fs::{File, OpenOptions};
++use std::io;
++#[cfg(unix)]
++use std::os::unix::fs::MetadataExt;
+ use std::path::PathBuf;
++use std::sync::atomic::{AtomicU64, Ordering};
++
++static REGION_SEQUENCE: AtomicU64 = AtomicU64::new(0);
+ 
+ #[derive(Debug)]
+ pub enum ShmError {
+@@ -43,7 +48,9 @@ fn shm_path(name: &str) -> PathBuf {
+ pub struct ShmRegion {
+     mmap: MmapMut,
+     path: PathBuf,
+-    is_owner: bool,
++    owner_lock: Option<File>,
++    #[cfg(unix)]
++    identity: (u64, u64),
+ }
+ 
+ unsafe impl Send for ShmRegion {}
+@@ -52,37 +59,77 @@ unsafe impl Sync for ShmRegion {}
+ impl ShmRegion {
+     /// 创建新的共享内存区域 (生产者)
+     pub fn create(name: &str, size: usize) -> Result<Self, ShmError> {
++        if size == 0 {
++            return Err(ShmError::InvalidSize);
++        }
+         let path = shm_path(name);
+-
+-        // 创建或覆盖文件
+-        let mut file = OpenOptions::new()
++        let lock_path = path.with_file_name(format!(
++            ".{}.lock",
++            path.file_name()
++                .ok_or(ShmError::InvalidSize)?
++                .to_string_lossy()
++        ));
++        // Keep this lock inode stable across publisher generations. In particular an old
++        // owner's Drop must not race a new owner's rename between stat and unlink.
++        let owner_lock = OpenOptions::new()
+             .read(true)
+             .write(true)
+             .create(true)
+-            .truncate(true)
+-            .open(&path)?;
+-
+-        // 设置文件大小
+-        file.set_len(size as u64)?;
+-
+-        // 写入零填充
+-        file.write_all(&vec![0u8; size])?;
+-        file.sync_all()?;
+-
+-        // 重新打开并映射
+-        let file = OpenOptions::new().read(true).write(true).open(&path)?;
++            .truncate(false)
++            .open(lock_path)?;
++        owner_lock.lock()?;
+ 
+-        let mmap = unsafe { MmapMut::map_mut(&file)? };
++        let (temporary_path, file) = loop {
++            let sequence = REGION_SEQUENCE.fetch_add(1, Ordering::Relaxed);
++            let temporary_path = path.with_file_name(format!(
++                ".{}.{}.{}.new",
++                path.file_name().unwrap().to_string_lossy(),
++                std::process::id(),
++                sequence
++            ));
++            match OpenOptions::new()
++                .read(true)
++                .write(true)
++                .create_new(true)
++                .open(&temporary_path)
++            {
++                Ok(file) => break (temporary_path, file),
++                Err(error) if error.kind() == io::ErrorKind::AlreadyExists => continue,
++                Err(error) => return Err(error.into()),
++            }
++        };
+ 
+-        Ok(Self {
+-            mmap,
+-            path,
+-            is_owner: true,
+-        })
++        let initialized = (|| -> Result<_, ShmError> {
++            // A fresh file is zero-filled by set_len. Never truncate the inode that
++            // existing consumers have mapped: doing so can SIGBUS those processes.
++            file.set_len(size as u64)?;
++            let mmap = unsafe { MmapMut::map_mut(&file)? };
++            #[cfg(unix)]
++            let identity = {
++                let metadata = file.metadata()?;
++                (metadata.dev(), metadata.ino())
++            };
++            std::fs::rename(&temporary_path, &path)?;
++            owner_lock.unlock()?;
++            Ok(Self {
++                mmap,
++                path,
++                owner_lock: Some(owner_lock),
++                #[cfg(unix)]
++                identity,
++            })
++        })();
++        if initialized.is_err() {
++            let _ = std::fs::remove_file(temporary_path);
++        }
++        initialized
+     }
+ 
+     /// 打开已存在的共享内存区域 (消费者)
+     pub fn open(name: &str, size: usize) -> Result<Self, ShmError> {
++        if size == 0 {
++            return Err(ShmError::InvalidSize);
++        }
+         let path = shm_path(name);
+ 
+         let file = OpenOptions::new().read(true).write(true).open(&path)?;
+@@ -98,7 +145,9 @@ impl ShmRegion {
+         Ok(Self {
+             mmap,
+             path,
+-            is_owner: false,
++            owner_lock: None,
++            #[cfg(unix)]
++            identity: (metadata.dev(), metadata.ino()),
+         })
+     }
+ 
+@@ -137,9 +186,85 @@ impl ShmRegion {
+ 
+ impl Drop for ShmRegion {
+     fn drop(&mut self) {
+-        if self.is_owner {
+-            // 删除文件
+-            let _ = std::fs::remove_file(&self.path);
++        if let Some(lock) = &self.owner_lock {
++            if lock.lock().is_err() {
++                return;
++            }
++            #[cfg(unix)]
++            if std::fs::metadata(&self.path)
++                .is_ok_and(|metadata| (metadata.dev(), metadata.ino()) == self.identity)
++            {
++                let _ = std::fs::remove_file(&self.path);
++            }
++            // Non-Unix platforms leave cleanup to the next atomic replacement;
++            // without an inode identity comparison deletion is unsafe.
++            let _ = lock.unlock();
+         }
+     }
+ }
++
++#[cfg(all(test, unix))]
++mod tests {
++    use super::*;
++
++    fn unique_name() -> String {
++        format!(
++            "talos_restart_test_{}_{}",
++            std::process::id(),
++            REGION_SEQUENCE.fetch_add(1, Ordering::Relaxed)
++        )
++    }
++
++    fn remove_lock(name: &str) {
++        let _ = std::fs::remove_file(format!("/tmp/.{name}.lock"));
++    }
++
++    #[test]
++    fn restart_replaces_inode_without_invalidating_old_mapping() {
++        let name = unique_name();
++        let old = ShmRegion::create(&name, 8192).unwrap();
++        unsafe { old.as_ptr().add(8191).write(73) };
++        let reader = ShmRegion::open(&name, 8192).unwrap();
++        let new = ShmRegion::create(&name, 4096).unwrap();
++        assert_ne!(old.identity, new.identity);
++        assert_eq!(reader.size(), 8192);
++        assert_eq!(unsafe { reader.as_ptr().add(8191).read() }, 73);
++        assert_eq!(unsafe { new.as_ptr().read() }, 0);
++        unsafe { new.as_ptr().write(42) };
++        let new_reader = ShmRegion::open(&name, 4096).unwrap();
++        assert_eq!(unsafe { new_reader.as_ptr().read() }, 42);
++
++        // The old publisher can exit after its replacement has already started.
++        drop(old);
++        assert!(shm_path(&name).exists());
++        assert_eq!(unsafe { reader.as_ptr().add(8191).read() }, 73);
++        drop(new);
++        assert!(!shm_path(&name).exists());
++        assert_eq!(unsafe { new_reader.as_ptr().read() }, 42);
++        drop((reader, new_reader));
++        remove_lock(&name);
++    }
++
++    #[test]
++    fn consumer_drop_preserves_owner_and_sizes_are_checked() {
++        let name = unique_name();
++        assert!(matches!(
++            ShmRegion::create(&name, 0),
++            Err(ShmError::InvalidSize)
++        ));
++        let owner = ShmRegion::create(&name, 4096).unwrap();
++        assert!(matches!(
++            ShmRegion::open(&name, 8192),
++            Err(ShmError::InvalidSize)
++        ));
++        assert!(matches!(
++            ShmRegion::open(&name, 0),
++            Err(ShmError::InvalidSize)
++        ));
++        drop(ShmRegion::open(&name, 4096).unwrap());
++        assert!(shm_path(&name).exists());
++        drop(owner);
++        assert!(!shm_path(&name).exists());
++        remove_lock(&name);
++    }
++}
+diff --git a/src/capture/driver.rs b/src/capture/driver.rs
+index 70ff4a8..d91767b 100644
+--- a/src/capture/driver.rs
++++ b/src/capture/driver.rs
+@@ -18,6 +18,7 @@ use bevy::{
+     },
+ };
+ use std::collections::VecDeque;
++use std::sync::atomic::{AtomicUsize, Ordering};
+ use std::sync::{Arc, Mutex};
+ 
+ #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+@@ -355,12 +356,49 @@ struct ImageCopiers(Vec<ImageCopier>);
+ #[derive(Resource, Default)]
+ struct ImageCopyDriverInstalled(bool);
+ 
++// Bound the entire asynchronous readback + conversion + publication pipeline.
++// Explicit dataset submissions retain their completeness semantics.
++const MAX_REALTIME_READBACKS: usize = 3;
++
++struct ReadbackPermit(Arc<AtomicUsize>);
++
++impl ReadbackPermit {
++    fn acquire(count: &Arc<AtomicUsize>, realtime: bool) -> Option<Self> {
++        count
++            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |n| {
++                if realtime && n >= MAX_REALTIME_READBACKS {
++                    None
++                } else {
++                    Some(n + 1)
++                }
++            })
++            .ok()?;
++        Some(Self(count.clone()))
++    }
++}
++
++impl Drop for ReadbackPermit {
++    fn drop(&mut self) {
++        self.0.fetch_sub(1, Ordering::AcqRel);
++    }
++}
++
+ struct ImageCopier {
+     config: CaptureConfig,
+     src_image: Handle<Image>,
+-    queue: Mutex<VecDeque<(Buffer, Vec<DynSnapshotSync>, u32, u32, TextureFormat)>>,
++    queue: Mutex<
++        VecDeque<(
++            Buffer,
++            Vec<DynSnapshotSync>,
++            u32,
++            u32,
++            TextureFormat,
++            ReadbackPermit,
++        )>,
++    >,
+     free_buffers: Arc<Mutex<Vec<Buffer>>>,
+     snapshots: Arc<Vec<ToSyncSnapshot>>,
++    in_flight: Arc<AtomicUsize>,
+ }
+ 
+ impl ImageCopier {
+@@ -375,6 +413,7 @@ impl ImageCopier {
+             queue: Mutex::new(VecDeque::new()),
+             free_buffers: Arc::new(Mutex::new(Vec::new())),
+             snapshots,
++            in_flight: Arc::new(AtomicUsize::new(0)),
+         }
+     }
+ 
+@@ -532,6 +571,10 @@ fn image_copy_driver(world: &World, mut render_context: RenderContext) {
+             (size.width as usize / block_dimensions.0 as usize) * block_size as usize,
+         );
+         let buffer_size = padded_bytes_per_row as u64 * size.height as u64;
++        let Some(permit) = ReadbackPermit::acquire(&copier.in_flight, active_frame_id.is_none())
++        else {
++            continue;
++        };
+         let buffer = copier.acquire_buffer(render_context.render_device(), buffer_size);
+ 
+         render_context.command_encoder().copy_texture_to_buffer(
+@@ -557,7 +600,7 @@ fn image_copy_driver(world: &World, mut render_context: RenderContext) {
+         );
+ 
+         let mut queue = copier.queue.lock().unwrap();
+-        queue.push_back((buffer, snapshots, size.width, size.height, format));
++        queue.push_back((buffer, snapshots, size.width, size.height, format, permit));
+     }
+ 
+     if let Some(id) = active_frame_id {
+@@ -581,9 +624,8 @@ fn receive_image_from_buffer(mut world: DeferredWorld) {
+                 continue;
+             };
+             let mut guard = copier.queue.lock().unwrap();
+-            guard
+-                .pop_front()
+-                .map(|(buffer, snapshots, width, height, texture_format)| {
++            guard.pop_front().map(
++                |(buffer, snapshots, width, height, texture_format, permit)| {
+                     (
+                         buffer,
+                         snapshots,
+@@ -592,11 +634,14 @@ fn receive_image_from_buffer(mut world: DeferredWorld) {
+                         texture_format,
+                         copier.free_buffers.clone(),
+                         copier.config.clone(),
++                        permit,
+                     )
+-                })
++                },
++            )
+         };
+ 
+-        let Some((buffer, snapshots, width, height, texture_format, free_buffers, config)) = next
++        let Some((buffer, snapshots, width, height, texture_format, free_buffers, config, permit)) =
++            next
+         else {
+             continue;
+         };
+@@ -626,6 +671,7 @@ fn receive_image_from_buffer(mut world: DeferredWorld) {
+ 
+         AsyncComputeTaskPool::get()
+             .spawn(async move {
++                let _permit = permit;
+                 let padded = r.await.expect("Failed to receive the map_async message");
+                 let frame_bytes = match frame_kind {
+                     CapturedFrameKind::Rgb8 => {
+@@ -786,6 +832,19 @@ impl Plugin for CameraCapturePlugin {
+ mod tests {
+     use super::*;
+ 
++    #[test]
++    fn realtime_readback_budget_is_bounded_and_released() {
++        let count = Arc::new(AtomicUsize::new(0));
++        let a = ReadbackPermit::acquire(&count, true).unwrap();
++        let b = ReadbackPermit::acquire(&count, true).unwrap();
++        let c = ReadbackPermit::acquire(&count, true).unwrap();
++        assert!(ReadbackPermit::acquire(&count, true).is_none());
++        drop(a);
++        assert!(ReadbackPermit::acquire(&count, true).is_some());
++        drop((b, c));
++        assert_eq!(count.load(Ordering::Acquire), 0);
++    }
++
+     #[test]
+     fn capture_submission_accepts_all_channels_in_any_order() {
+         let submission = CaptureFrameSubmission::default();
+diff --git a/src/systems/projectile.rs b/src/systems/projectile.rs
+index 2b245a4..43bcc2e 100644
+--- a/src/systems/projectile.rs
++++ b/src/systems/projectile.rs
+@@ -4,15 +4,33 @@ use bevy::prelude::*;
+ use core::{f32::consts::PI, time::Duration};
+ 
+ use crate::components::{
+-    Controlled, DartLaunch, DartProjectile, DartSetting, GameLayer, Infantry, InfantryChassis,
+-    InfantryGimbal, InfantryLaunchOffset, ProjectileCooldown, ProjectileLifetime,
+-    ProjectileSetting,
++    Controlled, DartLaunch, DartProjectile, DartSetting, GameLayer, Infantry, InfantryLaunchOffset,
++    ProjectileCooldown, ProjectileLifetime, ProjectileSetting,
+ };
+ use crate::config::SimulationConfig;
+ use crate::robomaster::prelude::Projectile;
+ use crate::statistic::ProjectileStatistics;
+ use crate::systems::{ControllerState, request_controller_rumble};
+ 
++// Shared by keyboard and external launch systems, including sparse fire pulses.
++#[derive(Resource, Default)]
++pub(crate) struct ProjectileCooldownClock(Duration);
++
++fn try_consume_cooldown(
++    timer: &mut Timer,
++    clock: &mut ProjectileCooldownClock,
++    now: Duration,
++) -> bool {
++    let elapsed = now.saturating_sub(clock.0);
++    clock.0 = now;
++    timer.tick(elapsed);
++    if !timer.is_finished() {
++        return false;
++    }
++    timer.reset();
++    true
++}
++
+ pub fn setup_projectile(
+     mut commands: Commands,
+     config: Res<SimulationConfig>,
+@@ -20,6 +38,7 @@ pub fn setup_projectile(
+     mut meshes: ResMut<Assets<Mesh>>,
+     mut materials: ResMut<Assets<StandardMaterial>>,
+ ) {
++    commands.insert_resource(ProjectileCooldownClock::default());
+     commands.insert_resource(ProjectileSetting(
+         meshes.add(Sphere::new(config.projectile.diameter / 2.0)),
+         materials.add(StandardMaterial {
+@@ -38,6 +57,7 @@ pub fn setup_projectile(
+ pub fn projectile_launch(
+     time: Res<Time>,
+     mut cooldown: ResMut<ProjectileCooldown>,
++    mut cooldown_clock: ResMut<ProjectileCooldownClock>,
+     mut stats: ResMut<ProjectileStatistics>,
+     config: Res<SimulationConfig>,
+     _asset_server: Res<AssetServer>,
+@@ -49,20 +69,15 @@ pub fn projectile_launch(
+         (&Transform, &LinearVelocity, &AngularVelocity),
+         (With<Infantry>, With<Controlled>),
+     >,
+-    gimbal: Single<
+-        (&GlobalTransform, &InfantryGimbal),
+-        (With<Controlled>, Without<InfantryChassis>),
+-    >,
+-    launch_offset: Single<&Transform, (With<Controlled>, With<InfantryLaunchOffset>)>,
++    launch_offset: Single<&GlobalTransform, (With<Controlled>, With<InfantryLaunchOffset>)>,
+ ) {
+-    cooldown.tick(time.delta());
+-    if !cooldown.is_finished() {
++    if !try_consume_cooldown(&mut cooldown, &mut cooldown_clock, time.elapsed()) {
+         return;
+     }
+-    cooldown.reset();
+ 
+     stats.increase_launch();
+-    let direction = (gimbal.0.rotation() * launch_offset.rotation)
++    let direction = launch_offset
++        .rotation()
+         .mul_vec3(Vec3::Y)
+         .normalize_or_zero();
+     if direction == Vec3::ZERO {
+@@ -81,9 +96,7 @@ pub fn projectile_launch(
+         MeshMaterial3d(setting.1.clone()),
+         LinearVelocity(vel),
+         AngularVelocity(infantry.2.0),
+-        Transform::IDENTITY.with_translation(
+-            infantry.0.translation + (gimbal.0.rotation() * launch_offset.translation),
+-        ),
++        Transform::from_translation(launch_offset.translation()),
+         ProjectileLifetime(Timer::from_seconds(
+             config.projectile.lifetime,
+             TimerMode::Once,
+@@ -220,3 +233,51 @@ pub fn cleanup_projectiles(
+         }
+     }
+ }
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++
++    #[test]
++    fn sparse_fire_pulses_include_time_without_requests() {
++        let mut timer = Timer::new(Duration::from_millis(50), TimerMode::Once);
++        let mut clock = ProjectileCooldownClock::default();
++        assert!(try_consume_cooldown(
++            &mut timer,
++            &mut clock,
++            Duration::from_millis(100)
++        ));
++        assert!(!try_consume_cooldown(
++            &mut timer,
++            &mut clock,
++            Duration::from_millis(102)
++        ));
++        assert!(try_consume_cooldown(
++            &mut timer,
++            &mut clock,
++            Duration::from_millis(200)
++        ));
++        // An idle interval permits one shot, without banking extra shots.
++        assert!(!try_consume_cooldown(
++            &mut timer,
++            &mut clock,
++            Duration::from_millis(201)
++        ));
++    }
++
++    #[test]
++    fn manual_and_talos_requests_share_one_cooldown() {
++        let mut timer = Timer::new(Duration::from_millis(50), TimerMode::Once);
++        let mut clock = ProjectileCooldownClock::default();
++        let mut count = 0;
++        for ms in 0..=200 {
++            let now = Duration::from_millis(ms);
++            count += usize::from(try_consume_cooldown(&mut timer, &mut clock, now));
++            assert!(
++                !try_consume_cooldown(&mut timer, &mut clock, now),
++                "a second caller must not advance or bypass the cooldown"
++            );
++        }
++        assert_eq!(count, 4);
++    }
++}
+diff --git a/src/talos/capture.rs b/src/talos/capture.rs
+index 537ecf9..ba4c1e0 100644
+--- a/src/talos/capture.rs
++++ b/src/talos/capture.rs
+@@ -7,6 +7,7 @@ use crate::capture::{
+     setup_capture_camera, setup_preview_window, sync_capture_camera,
+ };
+ use crate::components::{Controlled, InfantryGimbal, InfantryLaunchOffset, SubscribeAutoAim};
++use crate::statistic::ProjectileStatistics;
+ use crate::systems::{ChassisObservationFrame, GameplaySystems};
+ use crate::talos::plugin::{to_ros_quat, to_ros_translation};
+ use bevy::ecs::world::DeferredWorld;
+@@ -47,6 +48,8 @@ struct CapturedPoseData {
+     gimbal_quat: [f32; 4],
+     muzzle_rel: [f32; 3],
+     camera_rel: [f32; 3],
++    camera_quat: [f32; 4],
++    muzzle_quat: [f32; 4],
+     chassis_observation: ChassisObservation,
+ }
+ 
+@@ -166,16 +169,21 @@ pub fn publish_talos_runtime_state_system(
+     context: Option<Res<TalosCaptureContext>>,
+     frame_stamp: Res<TalosFrameStamp>,
+     following: Res<SubscribeAutoAim>,
++    statistics: Res<ProjectileStatistics>,
+ ) {
+     let Some(ctx) = context else {
+         return;
+     };
+ 
+     if let Ok(mut publisher) = ctx.publisher.lock() {
++        // Keep Talos v2 ABI; offsets 12 and 16 carry optional diagnostic counters only.
++        let mut diagnostic = [0; 55];
++        diagnostic[3..7].copy_from_slice(&statistics.launch_count.to_le_bytes());
++        diagnostic[7..11].copy_from_slice(&statistics.accurate_count.to_le_bytes());
+         publisher.publish_runtime_state(RuntimeState {
+             timestamp_ns: frame_stamp.timestamp_ns,
+             following: u8::from(following.load(Ordering::Acquire)),
+-            _pad: [0; 55],
++            _pad: diagnostic,
+         });
+     }
+ }
+@@ -282,12 +290,18 @@ fn captured_pose_data(
+     frame_seq: u64,
+     timestamp_ns: u64,
+ ) -> CapturedPoseData {
+-    let cam_rel = cam_transform.reparented_to(gimbal_transform);
+-    let muzzle_rel = muzzle_global.reparented_to(gimbal_transform);
+-
++    // Express offsets in the SAME frame as the orientation published below.
++    // The gun/camera alignment is not the raw GLB gimbal basis.
+     let gimbal_rot = gimbal_transform.rotation()
+         * muzzle_local.rotation
+         * Quat::from_euler(EulerRot::ZYX, 0.0, 0.0, PI / 2.0);
++    let reference = GlobalTransform::from(
++        Transform::from_translation(gimbal_transform.translation()).with_rotation(gimbal_rot),
++    );
++    let cam_rel = cam_transform.reparented_to(&reference);
++    let muzzle_rel = muzzle_global.reparented_to(&reference);
++    let camera_quat = to_ros_quat(cam_rel.rotation);
++    let muzzle_quat = to_ros_quat(muzzle_rel.rotation);
+ 
+     let gimbal_ros = to_ros_translation(gimbal_transform.translation());
+     let gimbal_rot = to_ros_quat(gimbal_rot);
+@@ -299,6 +313,8 @@ fn captured_pose_data(
+         gimbal_quat: [gimbal_rot.w, gimbal_rot.x, gimbal_rot.y, gimbal_rot.z],
+         muzzle_rel: [muzzle.x, muzzle.y, muzzle.z],
+         camera_rel: [camera.x, camera.y, camera.z],
++        camera_quat: [camera_quat.w, camera_quat.x, camera_quat.y, camera_quat.z],
++        muzzle_quat: [muzzle_quat.w, muzzle_quat.x, muzzle_quat.y, muzzle_quat.z],
+         chassis_observation: ChassisObservation {
+             frame_seq,
+             timestamp_ns,
+@@ -354,7 +370,7 @@ fn publish_pose_data(
+     publisher.publish_pose(
+         PoseIndex::Muzzle,
+         pose.muzzle_rel,
+-        [1.0, 0.0, 0.0, 0.0],
++        pose.muzzle_quat,
+         frame_seq,
+         timestamp_ns,
+     );
+@@ -362,7 +378,7 @@ fn publish_pose_data(
+     publisher.publish_pose(
+         PoseIndex::Camera,
+         pose.camera_rel,
+-        [1.0, 0.0, 0.0, 0.0],
++        pose.camera_quat,
+         frame_seq,
+         timestamp_ns,
+     );
+@@ -391,3 +407,112 @@ fn publish_pose_data(
+         timestamp_ns,
+     );
+ }
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++
++    fn quaternion(wxyz: [f32; 4]) -> Quat {
++        Quat::from_xyzw(wxyz[1], wxyz[2], wxyz[3], wxyz[0])
++    }
++
++    fn assert_vec_close(actual: Vec3, expected: Vec3) {
++        assert!(
++            (actual - expected).length() < 2e-5,
++            "{actual:?} != {expected:?}"
++        );
++    }
++
++    fn assert_quat_close(actual: Quat, expected: Quat) {
++        assert!(
++            actual.dot(expected).abs() > 1.0 - 2e-6,
++            "{actual:?} != {expected:?}"
++        );
++    }
++
++    #[test]
++    fn pose_chain_reconstructs_camera_and_muzzle_world_poses() {
++        // Include nonzero translation, roll/pitch/yaw and camera extrinsics. The
++        // GLB gimbal basis intentionally differs from the published aiming basis.
++        let gimbal =
++            GlobalTransform::from(
++                Transform::from_translation(Vec3::new(3.2, 0.8, -6.7))
++                    .with_rotation(Quat::from_euler(EulerRot::YXZ, 0.8, -0.3, 0.1)),
++            );
++        let muzzle_local = Transform::from_translation(Vec3::new(0.04, 0.2, -0.15))
++            .with_rotation(Quat::from_euler(EulerRot::XYZ, -1.3, 0.07, -0.05));
++        let muzzle = gimbal.mul_transform(muzzle_local);
++        let aiming_rotation =
++            gimbal.rotation() * muzzle_local.rotation * Quat::from_rotation_x(PI / 2.0);
++        let camera = GlobalTransform::from(
++            Transform::from_translation(
++                gimbal.translation() + aiming_rotation * Vec3::new(0.08, 0.11, -0.03),
++            )
++            .with_rotation(aiming_rotation * Quat::from_euler(EulerRot::XYZ, 0.02, -0.04, 0.01)),
++        );
++        let pose = captured_pose_data(
++            &camera,
++            &gimbal,
++            &muzzle,
++            &muzzle_local,
++            &ChassisObservationFrame::default(),
++            1234,
++            987654321,
++        );
++        let q_world_gimbal = quaternion(pose.gimbal_quat);
++        let p_world_gimbal = Vec3::from_array(pose.gimbal_ros);
++
++        assert_quat_close(q_world_gimbal, to_ros_quat(aiming_rotation));
++        assert_quat_close(
++            q_world_gimbal * quaternion(pose.camera_quat),
++            to_ros_quat(camera.rotation()),
++        );
++        assert_quat_close(
++            q_world_gimbal * quaternion(pose.muzzle_quat),
++            to_ros_quat(muzzle.rotation()),
++        );
++        assert_vec_close(
++            p_world_gimbal + q_world_gimbal * Vec3::from_array(pose.camera_rel),
++            to_ros_translation(camera.translation()),
++        );
++        assert_vec_close(
++            p_world_gimbal + q_world_gimbal * Vec3::from_array(pose.muzzle_rel),
++            to_ros_translation(muzzle.translation()),
++        );
++        // ROS camera +X is the Bevy -Z viewing ray. The muzzle GLB uses +Y.
++        assert_vec_close(
++            q_world_gimbal * quaternion(pose.camera_quat) * Vec3::X,
++            to_ros_translation(camera.rotation() * Vec3::NEG_Z),
++        );
++        assert_vec_close(
++            q_world_gimbal * quaternion(pose.muzzle_quat) * Vec3::Z,
++            to_ros_translation(muzzle.rotation() * Vec3::Y),
++        );
++        assert_eq!(pose.chassis_observation.frame_seq, 1234);
++        assert_eq!(pose.chassis_observation.timestamp_ns, 987654321);
++    }
++
++    #[test]
++    fn aligned_camera_has_identity_relative_orientation() {
++        let gimbal = GlobalTransform::from(
++            Transform::from_translation(Vec3::new(-2.0, 1.5, 4.0))
++                .with_rotation(Quat::from_rotation_y(-0.6)),
++        );
++        let muzzle_local = Transform::from_rotation(Quat::from_rotation_x(-PI / 2.0));
++        let muzzle = gimbal.mul_transform(muzzle_local);
++        let camera = GlobalTransform::from(
++            Transform::from_translation(gimbal.translation()).with_rotation(gimbal.rotation()),
++        );
++        let pose = captured_pose_data(
++            &camera,
++            &gimbal,
++            &muzzle,
++            &muzzle_local,
++            &ChassisObservationFrame::default(),
++            0,
++            0,
++        );
++        assert_quat_close(quaternion(pose.camera_quat), Quat::IDENTITY);
++        assert_quat_close(quaternion(pose.gimbal_quat), to_ros_quat(gimbal.rotation()));
++    }
++}
+diff --git a/src/talos/mod.rs b/src/talos/mod.rs
+index 2b72038..d9b23b2 100644
+--- a/src/talos/mod.rs
++++ b/src/talos/mod.rs
+@@ -5,6 +5,7 @@
+ 
+ mod capture;
+ mod ground_truth;
++mod outpost_test;
+ mod plugin;
+ 
+ pub use plugin::TalosPlugin;
+diff --git a/src/talos/plugin.rs b/src/talos/plugin.rs
+index 3c24524..d008c30 100644
+--- a/src/talos/plugin.rs
++++ b/src/talos/plugin.rs
+@@ -1,20 +1,19 @@
+ use crate::capture::driver::{CaptureConfig, CapturedFrameKind};
+ use crate::capture::{IMAGE_HEIGHT, IMAGE_WIDTH};
+ use crate::components::{
+-    Controlled, InfantryChassis, InfantryGimbal, InfantryLaunchOffset, SubscribeAutoAim,
++    Controlled, Infantry, InfantryGimbal, InfantryLaunchOffset, SubscribeAutoAim,
+ };
+ use crate::config::SimulationConfig;
+-use crate::systems::projectile_launch;
++use crate::systems::{GameplaySystems, projectile_launch};
+ use crate::talos::capture::{
+     TalosCaptureContext, TalosCapturePlugin, TalosFrameStamp, advance_talos_frame_stamp,
+     publish_talos_runtime_state_system,
+ };
+-use bevy::ecs::system::RunSystemOnce;
+-use bevy::image::BevyDefault;
+ use bevy::prelude::*;
+ use bevy::render::render_resource::TextureFormat;
+ use std::sync::atomic::{AtomicBool, Ordering};
+ use std::sync::{Arc, Mutex};
++use std::time::{SystemTime, UNIX_EPOCH};
+ use talos_ipc::*;
+ 
+ #[derive(Resource)]
+@@ -23,6 +22,19 @@ pub struct ShmSubscriberRes(pub Arc<Mutex<ShmSubscriber>>);
+ #[derive(Resource, Deref, DerefMut)]
+ pub struct TalosEnabled(pub AtomicBool);
+ 
++#[derive(Resource, Default)]
++struct PendingTalosShot(AtomicBool);
++
++// Retained when subscription is toggled so a held token cannot replay a shot.
++#[derive(Resource, Default)]
++struct TalosFireToken(u64);
++
++#[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
++pub(super) struct TalosControl;
++
++// Commands describe the current aim. Do not execute a queued shot after a paused client resumes.
++const MAX_COMMAND_AGE_NS: u64 = 100_000_000;
++
+ pub struct TalosPluginConfig {
+     pub width: u32,
+     pub height: u32,
+@@ -74,7 +86,13 @@ impl Plugin for TalosPlugin {
+             fov_y: self.config.fov_y,
+         };
+ 
+-        app.init_resource::<TalosFrameStamp>();
++        app.init_resource::<TalosFrameStamp>()
++            .init_resource::<PendingTalosShot>()
++            .init_resource::<TalosFireToken>();
++
++        if std::env::var("DAEDALUS_TALOS_OUTPOST_TEST").as_deref() == Ok("1") {
++            app.add_plugins(super::outpost_test::TalosOutpostTestPlugin);
++        }
+ 
+         app.add_plugins(TalosCapturePlugin {
+             config: capture_config,
+@@ -103,27 +121,52 @@ impl Plugin for TalosPlugin {
+                 .after(publish_talos_runtime_state_system),
+         );
+         app.add_systems(
+-            Last,
++            Update,
+             process_subscription
++                .in_set(TalosControl)
++                .after(GameplaySystems::Input)
++                .before(GameplaySystems::Camera)
+                 .run_if(|enabled: Res<SubscribeAutoAim>| enabled.load(Ordering::Acquire)),
+         );
++        app.add_systems(
++            PostUpdate,
++            projectile_launch
++                .after(TransformSystems::Propagate)
++                .run_if(take_pending_shot),
++        );
+     }
+ }
+ 
+ fn process_subscription(
+     context: Option<Res<ShmSubscriberRes>>,
+-    mut commands: Commands,
++    pending_shot: Res<PendingTalosShot>,
++    mut fire_token: ResMut<TalosFireToken>,
+     gimbal: Single<
+         (&mut Transform, &mut InfantryGimbal),
+         (
+             With<Controlled>,
+-            Without<InfantryChassis>,
++            With<InfantryGimbal>,
++            Without<Infantry>,
+             Without<InfantryLaunchOffset>,
+         ),
+     >,
+     muzzle_offset: Single<
+-        (&GlobalTransform, &Transform),
+-        (With<InfantryLaunchOffset>, With<Controlled>),
++        &Transform,
++        (
++            With<InfantryLaunchOffset>,
++            With<Controlled>,
++            Without<InfantryGimbal>,
++            Without<Infantry>,
++        ),
++    >,
++    infantry: Single<
++        &Transform,
++        (
++            With<Infantry>,
++            With<Controlled>,
++            Without<InfantryGimbal>,
++            Without<InfantryLaunchOffset>,
++        ),
+     >,
+ ) {
+     let Some(ctx) = context else {
+@@ -134,23 +177,74 @@ fn process_subscription(
+     let Some(cmd) = recv_gimbal_cmd(&ctx) else {
+         return;
+     };
+-    if cmd.distance_m == -1.0 {
++    let now_ns = SystemTime::now()
++        .duration_since(UNIX_EPOCH)
++        .map(|duration| duration.as_nanos() as u64)
++        .unwrap_or(0);
++    if !command_is_valid(&cmd, now_ns) {
+         return;
+     }
+-    if cmd.fire_advice == 1 {
+-        commands.queue(|w: &mut World| {
+-            w.run_system_once(projectile_launch).unwrap();
+-        });
++    apply_gimbal_command(
++        &cmd,
++        &mut gimbal_transform,
++        &mut gimbal_data,
++        infantry.rotation,
++        muzzle_offset.rotation,
++    );
++    pending_shot.0.store(
++        consume_fire_request(&cmd, now_ns, &mut fire_token),
++        Ordering::Release,
++    );
++}
++
++fn consume_fire_request(cmd: &GimbalCmd, now_ns: u64, last_token: &mut TalosFireToken) -> bool {
++    // Latest-only pose commands retain the most recent shot timestamp in existing v2 padding.
++    let token = u64::from_le_bytes(cmd._pad[..8].try_into().unwrap());
++    if token == 0 {
++        return cmd.fire_advice == 1;
++    }
++    if token <= last_token.0
++        || !now_ns
++            .checked_sub(token)
++            .is_some_and(|age| age <= MAX_COMMAND_AGE_NS)
++    {
++        return false;
+     }
+-    let yaw_f32 = (cmd.yaw_deg).to_radians();
++    last_token.0 = token;
++    true
++}
++
++fn command_is_valid(cmd: &GimbalCmd, now_ns: u64) -> bool {
++    cmd.timestamp_ns != 0
++        && now_ns
++            .checked_sub(cmd.timestamp_ns)
++            .is_some_and(|age| age <= MAX_COMMAND_AGE_NS)
++        && cmd.yaw_deg.is_finite()
++        && cmd.pitch_deg.is_finite()
++        && cmd.distance_m.is_finite()
++        && cmd.distance_m >= 0.0
++        && cmd.fire_advice <= 1
++}
++
++pub(super) fn apply_gimbal_command(
++    cmd: &GimbalCmd,
++    gimbal_transform: &mut Transform,
++    gimbal_data: &mut InfantryGimbal,
++    infantry_rotation: Quat,
++    muzzle_rotation: Quat,
++) {
++    let yaw_f32 = cmd.yaw_deg.to_radians();
+     let pitch_f32 = (-cmd.pitch_deg - 90.0).to_radians();
+     gimbal_data.local_yaw = yaw_f32;
+     gimbal_data.pitch = pitch_f32;
+     let expected_rotation = Quat::from_euler(EulerRot::YXZ, yaw_f32, pitch_f32, 0.0);
+-    let current_rotation = muzzle_offset.0.rotation();
+-    let delta = expected_rotation * current_rotation.inverse();
+-    gimbal_transform.rotation = delta * gimbal_transform.rotation;
+-    //info!("yaw={} pitch={}", cmd.yaw_deg, cmd.pitch_deg);
++    // Use current local transforms; GlobalTransform still belongs to the previous propagation.
++    gimbal_transform.rotation =
++        infantry_rotation.inverse() * expected_rotation * muzzle_rotation.inverse();
++}
++
++fn take_pending_shot(pending_shot: Res<PendingTalosShot>) -> bool {
++    pending_shot.0.swap(false, Ordering::AcqRel)
+ }
+ 
+ fn heartbeat_system(context: Option<Res<TalosCaptureContext>>) {
+@@ -203,3 +297,270 @@ pub fn to_ros_quat(quat: Quat) -> Quat {
+     let new_rotation = align_quat * quat * align_quat.inverse();
+     new_rotation
+ }
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++    use crate::components::{ProjectileCooldown, ProjectileSetting};
++    use crate::robomaster::prelude::{INFANTRY_THREE_CONFIG, Projectile, Team};
++    use crate::statistic::ProjectileStatistics;
++    use crate::systems::ProjectileCooldownClock;
++    use avian3d::prelude::{AngularVelocity, LinearVelocity};
++    use bevy::input::gamepad::GamepadRumbleRequest;
++
++    fn command(now_ns: u64) -> GimbalCmd {
++        GimbalCmd {
++            timestamp_ns: now_ns,
++            yaw_deg: 50.0,
++            pitch_deg: -12.0,
++            distance_m: 4.0,
++            fire_advice: 1,
++            ..default()
++        }
++    }
++
++    #[test]
++    fn expired_future_and_nonfinite_commands_are_rejected() {
++        let now_ns = 1_000_000_000;
++        let valid = command(now_ns);
++        assert!(command_is_valid(&valid, now_ns));
++        assert!(command_is_valid(&valid, now_ns + MAX_COMMAND_AGE_NS));
++        assert!(!command_is_valid(&valid, now_ns + MAX_COMMAND_AGE_NS + 1));
++        assert!(!command_is_valid(&valid, now_ns - 1));
++        assert!(!command_is_valid(
++            &GimbalCmd {
++                timestamp_ns: 0,
++                ..valid
++            },
++            now_ns
++        ));
++        assert!(!command_is_valid(
++            &GimbalCmd {
++                yaw_deg: f32::NAN,
++                ..valid
++            },
++            now_ns
++        ));
++        assert!(!command_is_valid(
++            &GimbalCmd {
++                pitch_deg: f32::INFINITY,
++                ..valid
++            },
++            now_ns
++        ));
++        assert!(!command_is_valid(
++            &GimbalCmd {
++                distance_m: -1.0,
++                ..valid
++            },
++            now_ns
++        ));
++    }
++
++    fn token_command(now_ns: u64, token: u64, fire_advice: u8) -> GimbalCmd {
++        let mut cmd = command(now_ns);
++        cmd.fire_advice = fire_advice;
++        cmd._pad[..8].copy_from_slice(&token.to_le_bytes());
++        cmd
++    }
++
++    #[test]
++    fn overwritten_fire_pulse_survives_once_in_latest_pose() {
++        let now_ns = 1_000_000_000;
++        let mut last_token = TalosFireToken::default();
++        // The fire=1 command was overwritten before the consumer read it. Only its
++        // token survives in the latest fire=0 pose command, which must still fire once.
++        let latest = token_command(now_ns, now_ns - 10_000_000, 0);
++        assert!(command_is_valid(&latest, now_ns));
++        assert!(consume_fire_request(&latest, now_ns, &mut last_token));
++        assert!(!consume_fire_request(&latest, now_ns + 1, &mut last_token));
++        let repeated = GimbalCmd {
++            fire_advice: 1,
++            ..latest
++        };
++        assert!(!consume_fire_request(
++            &repeated,
++            now_ns + 2,
++            &mut last_token
++        ));
++    }
++
++    #[test]
++    fn fresh_pose_cannot_refresh_expired_or_future_fire_token() {
++        let now_ns = 1_000_000_000;
++        let mut last_token = TalosFireToken::default();
++        let expired = token_command(now_ns, now_ns - MAX_COMMAND_AGE_NS - 1, 1);
++        assert!(command_is_valid(&expired, now_ns));
++        assert!(!consume_fire_request(&expired, now_ns, &mut last_token));
++        let future = token_command(now_ns, now_ns + 1, 1);
++        assert!(command_is_valid(&future, now_ns));
++        assert!(!consume_fire_request(&future, now_ns, &mut last_token));
++        let fresh = token_command(now_ns, now_ns, 0);
++        assert!(consume_fire_request(&fresh, now_ns, &mut last_token));
++    }
++
++    #[test]
++    fn zero_token_preserves_legacy_fire_advice() {
++        let now_ns = 1_000_000_000;
++        let mut last_token = TalosFireToken(123);
++        assert!(consume_fire_request(
++            &command(now_ns),
++            now_ns,
++            &mut last_token
++        ));
++        assert!(!consume_fire_request(
++            &GimbalCmd {
++                fire_advice: 0,
++                ..command(now_ns)
++            },
++            now_ns,
++            &mut last_token
++        ));
++        assert_eq!(last_token.0, 123);
++    }
++
++    #[derive(Resource)]
++    struct TestCommand {
++        command: GimbalCmd,
++        infantry_rotation: Quat,
++        muzzle_rotation: Quat,
++    }
++
++    fn point_and_fire_fixture(
++        gimbal: Single<(&mut Transform, &mut InfantryGimbal), With<InfantryGimbal>>,
++        shot: Res<PendingTalosShot>,
++        mut fire_token: ResMut<TalosFireToken>,
++        command: Res<TestCommand>,
++    ) {
++        let (mut transform, mut data) = gimbal.into_inner();
++        apply_gimbal_command(
++            &command.command,
++            &mut transform,
++            &mut data,
++            command.infantry_rotation,
++            command.muzzle_rotation,
++        );
++        shot.0.store(
++            consume_fire_request(
++                &command.command,
++                command.command.timestamp_ns,
++                &mut fire_token,
++            ),
++            Ordering::Release,
++        );
++    }
++
++    #[test]
++    fn same_frame_shot_uses_commanded_world_direction_after_propagation() {
++        let infantry_rotation = Quat::from_rotation_y(0.7);
++        let muzzle_rotation = Quat::from_rotation_x(-1.13);
++        let infantry_translation = Vec3::new(3.0, 1.0, -2.0);
++        let gimbal_translation = Vec3::new(0.04, 0.3, -0.06);
++        let muzzle_translation = Vec3::new(-0.002, 0.11, -0.01);
++        // Simulate a fire pulse overwritten by a newer non-firing pose packet.
++        let cmd = token_command(1, 1, 0);
++        let expected = Quat::from_euler(
++            EulerRot::YXZ,
++            cmd.yaw_deg.to_radians(),
++            (-cmd.pitch_deg - 90.0).to_radians(),
++            0.0,
++        ) * Vec3::Y;
++        let mut config = SimulationConfig::default();
++        config.projectile.speed = 25.0;
++        let mut app = App::new();
++        app.add_plugins((MinimalPlugins, TransformPlugin, AssetPlugin::default()))
++            .add_message::<GamepadRumbleRequest>()
++            .insert_resource(config)
++            .insert_resource(ProjectileStatistics::default())
++            .insert_resource(ProjectileCooldown(Timer::from_seconds(
++                0.0,
++                TimerMode::Once,
++            )))
++            .init_resource::<ProjectileCooldownClock>()
++            .insert_resource(ProjectileSetting(Handle::default(), Handle::default()))
++            .init_resource::<PendingTalosShot>()
++            .init_resource::<TalosFireToken>()
++            .insert_resource(TestCommand {
++                command: cmd,
++                infantry_rotation,
++                muzzle_rotation,
++            })
++            .add_systems(Update, point_and_fire_fixture)
++            .add_systems(
++                PostUpdate,
++                projectile_launch
++                    .after(TransformSystems::Propagate)
++                    .run_if(take_pending_shot),
++            );
++        let infantry = app
++            .world_mut()
++            .spawn((
++                Transform::from_translation(infantry_translation).with_rotation(infantry_rotation),
++                GlobalTransform::default(),
++                Infantry::new(Team::Red, INFANTRY_THREE_CONFIG),
++                Controlled,
++                LinearVelocity::ZERO,
++                AngularVelocity::ZERO,
++            ))
++            .id();
++        let gimbal = app
++            .world_mut()
++            .spawn((
++                Transform::from_translation(gimbal_translation),
++                GlobalTransform::default(),
++                InfantryGimbal::default(),
++                Controlled,
++                ChildOf(infantry),
++            ))
++            .id();
++        let muzzle = app
++            .world_mut()
++            .spawn((
++                Transform::from_translation(muzzle_translation).with_rotation(muzzle_rotation),
++                GlobalTransform::default(),
++                InfantryLaunchOffset,
++                Controlled,
++                ChildOf(gimbal),
++            ))
++            .id();
++
++        app.update();
++        let mut projectiles = app
++            .world_mut()
++            .query_filtered::<(&LinearVelocity, &Transform), With<Projectile>>();
++        let (velocity, projectile_transform) = projectiles.single(app.world()).unwrap();
++        let actual = velocity.0.normalize();
++        assert!(
++            (actual - expected).length() < 1e-5,
++            "actual={actual:?}, expected={expected:?}"
++        );
++        let muzzle_global = app.world().get::<GlobalTransform>(muzzle).unwrap();
++        assert!((projectile_transform.translation - muzzle_global.translation()).length() < 1e-5);
++        let expected_origin = infantry_translation
++            + infantry_rotation * gimbal_translation
++            + Quat::from_euler(
++                EulerRot::YXZ,
++                cmd.yaw_deg.to_radians(),
++                (-cmd.pitch_deg - 90.0).to_radians(),
++                0.0,
++            ) * muzzle_rotation.inverse()
++                * muzzle_translation;
++        assert!((projectile_transform.translation - expected_origin).length() < 1e-5);
++        assert_eq!(
++            app.world().resource::<ProjectileStatistics>().launch_count,
++            1
++        );
++        assert!(
++            !app.world()
++                .resource::<PendingTalosShot>()
++                .0
++                .load(Ordering::Acquire)
++        );
++        app.update();
++        assert_eq!(
++            app.world().resource::<ProjectileStatistics>().launch_count,
++            1,
++            "the held token must not create another actual projectile"
++        );
++    }
++}
+diff --git a/src/talos/outpost_test.rs b/src/talos/outpost_test.rs
+new file mode 100644
+index 0000000..8294411
+--- /dev/null
++++ b/src/talos/outpost_test.rs
+@@ -0,0 +1,252 @@
++//! Opt-in, fixed firing lane for reproducible real-image / real-projectile testing.
++//! This plugin never supplies observations or target state to the auto-aim client.
++use super::plugin::{M_ALIGN_MAT3, TalosControl, apply_gimbal_command};
++use crate::components::{
++    CameraMode, Controlled, FollowingType, Infantry, InfantryGimbal, InfantryLaunchOffset,
++    SubscribeAutoAim,
++};
++use crate::systems::{
++    ControllerInput, ControllerState, GameplaySystems, sample_gamepad_controller,
++    update_auto_aim_subscription,
++};
++use avian3d::prelude::{AngularVelocity, LinearVelocity, Position, RigidBody, Rotation};
++use bevy::prelude::*;
++use std::sync::atomic::Ordering;
++use talos_ipc::GimbalCmd;
++
++// About 3 m from the blue outpost, along the unobstructed firing lane.
++const ROBOT_POSITION: Vec3 = Vec3::new(-0.53, 0.29, 2.27);
++// Used ONLY for initial acquisition, before the first Talos command is accepted.
++const INITIAL_LOOK_AT: Vec3 = Vec3::new(-3.077369, 1.299048, 3.848423);
++
++pub(super) struct TalosOutpostTestPlugin;
++
++impl Plugin for TalosOutpostTestPlugin {
++    fn build(&self, app: &mut App) {
++        info!("DAEDALUS_TALOS_OUTPOST_TEST=1: fixed 3 m firing lane; manual controls disabled");
++        app.add_systems(
++            Update,
++            lock_manual_controls
++                .after(sample_gamepad_controller)
++                .before(update_auto_aim_subscription)
++                .in_set(GameplaySystems::Input),
++        )
++        .add_systems(
++            Update,
++            fix_robot_and_initial_view
++                .after(GameplaySystems::Input)
++                .before(GameplaySystems::Camera)
++                .before(TalosControl),
++        );
++    }
++}
++
++fn lock_manual_controls(
++    mut controller: ResMut<ControllerState>,
++    mut camera: ResMut<CameraMode>,
++    following: Res<SubscribeAutoAim>,
++) {
++    controller.controlled = ControllerInput {
++        auto_aim: true,
++        ..default()
++    };
++    controller.remote = ControllerInput::default();
++    camera.0 = FollowingType::Robot;
++    following.store(true, Ordering::Release);
++}
++
++fn fix_robot_and_initial_view(
++    mut commands: Commands,
++    mut initialized: Local<bool>,
++    mut infantry: Query<
++        (
++            Entity,
++            &mut Transform,
++            &RigidBody,
++            Option<&mut Position>,
++            Option<&mut Rotation>,
++            Option<&mut LinearVelocity>,
++            Option<&mut AngularVelocity>,
++        ),
++        (
++            With<Infantry>,
++            With<Controlled>,
++            Without<InfantryGimbal>,
++            Without<InfantryLaunchOffset>,
++        ),
++    >,
++    mut gimbal: Query<
++        (&mut Transform, &mut InfantryGimbal),
++        (
++            With<Controlled>,
++            With<InfantryGimbal>,
++            Without<Infantry>,
++            Without<InfantryLaunchOffset>,
++        ),
++    >,
++    muzzle: Query<
++        &Transform,
++        (
++            With<Controlled>,
++            With<InfantryLaunchOffset>,
++            Without<Infantry>,
++            Without<InfantryGimbal>,
++        ),
++    >,
++) {
++    let Ok((entity, mut root, rigid_body, position, rotation, velocity, angular_velocity)) =
++        infantry.single_mut()
++    else {
++        return;
++    };
++    *root = Transform::from_translation(ROBOT_POSITION);
++    if *rigid_body != RigidBody::Static {
++        commands.entity(entity).insert(RigidBody::Static);
++    }
++    if let Some(mut position) = position {
++        position.0 = ROBOT_POSITION;
++    }
++    if let Some(mut rotation) = rotation {
++        rotation.0 = Quat::IDENTITY;
++    }
++    if let Some(mut velocity) = velocity {
++        velocity.0 = Vec3::ZERO;
++    }
++    if let Some(mut velocity) = angular_velocity {
++        velocity.0 = Vec3::ZERO;
++    }
++
++    if *initialized {
++        return;
++    }
++    let (Ok((mut gimbal, mut data)), Ok(muzzle)) = (gimbal.single_mut(), muzzle.single()) else {
++        return;
++    };
++    // The vehicle GLB has an identity VEHICLE parent. Iterate the actual muzzle
++    // offset so the acquisition pose accounts for its movement as the gun turns.
++    let pivot = ROBOT_POSITION + gimbal.translation;
++    let mut origin = pivot;
++    for _ in 0..5 {
++        let delta = M_ALIGN_MAT3 * (INITIAL_LOOK_AT - origin);
++        let command = GimbalCmd {
++            yaw_deg: delta.y.atan2(delta.x).to_degrees(),
++            pitch_deg: -delta.z.atan2(delta.x.hypot(delta.y)).to_degrees(),
++            ..default()
++        };
++        apply_gimbal_command(
++            &command,
++            &mut gimbal,
++            &mut data,
++            Quat::IDENTITY,
++            muzzle.rotation,
++        );
++        origin = pivot + gimbal.rotation * muzzle.translation;
++    }
++    *initialized = true;
++    info!("Outpost test camera acquired; subsequent aiming and firing require Talos commands");
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++    use crate::robomaster::prelude::{INFANTRY_THREE_CONFIG, Team};
++    use std::sync::atomic::AtomicBool;
++
++    #[test]
++    fn fixture_locks_robot_controls_and_does_not_reset_later_aim() {
++        let mut app = App::new();
++        app.add_plugins((MinimalPlugins, TransformPlugin, TalosOutpostTestPlugin))
++            .init_resource::<ControllerState>()
++            .insert_resource(CameraMode(FollowingType::Free))
++            .insert_resource(SubscribeAutoAim(AtomicBool::new(false)));
++        let root = app
++            .world_mut()
++            .spawn((
++                Transform::from_xyz(9.0, 8.0, 7.0),
++                GlobalTransform::default(),
++                Infantry::new(Team::Red, INFANTRY_THREE_CONFIG),
++                Controlled,
++                RigidBody::Dynamic,
++                Position(Vec3::ONE),
++                Rotation(Quat::from_rotation_x(0.3)),
++                LinearVelocity(Vec3::ONE),
++                AngularVelocity(Vec3::ONE),
++            ))
++            .id();
++        let gimbal = app
++            .world_mut()
++            .spawn((
++                Transform::from_xyz(0.0, 0.08, 0.0),
++                GlobalTransform::default(),
++                InfantryGimbal::default(),
++                Controlled,
++                ChildOf(root),
++            ))
++            .id();
++        let muzzle = app
++            .world_mut()
++            .spawn((
++                Transform::from_translation(Vec3::new(-0.002, 0.11, -0.01))
++                    .with_rotation(Quat::from_rotation_x(-1.13)),
++                GlobalTransform::default(),
++                InfantryLaunchOffset,
++                Controlled,
++                ChildOf(gimbal),
++            ))
++            .id();
++        {
++            let mut controller = app.world_mut().resource_mut::<ControllerState>();
++            controller.controlled.shoot = true;
++            controller.controlled.movement = Vec2::ONE;
++            controller.controlled.gimbal = Vec2::ONE;
++        }
++        app.update();
++        assert_eq!(
++            app.world().get::<Transform>(root).unwrap().translation,
++            ROBOT_POSITION
++        );
++        assert_eq!(app.world().get::<Position>(root).unwrap().0, ROBOT_POSITION);
++        assert_eq!(
++            *app.world().get::<RigidBody>(root).unwrap(),
++            RigidBody::Static
++        );
++        assert_eq!(
++            app.world().get::<LinearVelocity>(root).unwrap().0,
++            Vec3::ZERO
++        );
++        assert_eq!(
++            app.world().get::<AngularVelocity>(root).unwrap().0,
++            Vec3::ZERO
++        );
++        let pose = app.world().get::<GlobalTransform>(muzzle).unwrap();
++        let expected = (INITIAL_LOOK_AT - pose.translation()).normalize();
++        assert!((pose.rotation() * Vec3::Y - expected).length() < 1e-5);
++        let controller = app.world().resource::<ControllerState>();
++        assert!(!controller.controlled.shoot);
++        assert_eq!(controller.controlled.movement, Vec2::ZERO);
++        assert_eq!(controller.controlled.gimbal, Vec2::ZERO);
++        assert!(controller.controlled.auto_aim);
++        assert!(
++            app.world()
++                .resource::<SubscribeAutoAim>()
++                .load(Ordering::Acquire)
++        );
++        assert!(app.world().resource::<CameraMode>().0 == FollowingType::Robot);
++
++        let client_rotation = Quat::from_rotation_y(-0.9);
++        app.world_mut()
++            .get_mut::<Transform>(gimbal)
++            .unwrap()
++            .rotation = client_rotation;
++        app.world_mut().get_mut::<LinearVelocity>(root).unwrap().0 = Vec3::ONE;
++        app.update();
++        assert_eq!(
++            app.world().get::<Transform>(gimbal).unwrap().rotation,
++            client_rotation
++        );
++        assert_eq!(
++            app.world().get::<LinearVelocity>(root).unwrap().0,
++            Vec3::ZERO
++        );
++    }
++}
