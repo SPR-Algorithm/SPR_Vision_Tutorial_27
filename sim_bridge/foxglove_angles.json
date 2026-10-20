@@ -1,0 +1,179 @@
+{
+  "version": 1,
+  "content": {
+    "type": "split",
+    "direction": "column",
+    "items": [
+      {
+        "proportion": 1,
+        "content": {
+          "type": "split",
+          "direction": "row",
+          "items": [
+            {
+              "proportion": 1,
+              "content": {
+                "type": "panel",
+                "panelType": "Plot",
+                "config": {
+                  "paths": [
+                    {
+                      "enabled": true,
+                      "color": "#4E79A7",
+                      "label": "target.yaw",
+                      "lineSize": 2,
+                      "showLine": true,
+                      "value": "/auto_aim/metrics.target.yaw_unwrapped_deg",
+                      "timestampMethod": "customField",
+                      "timestampPath": "/auto_aim/metrics.timestamp"
+                    },
+                    {
+                      "enabled": true,
+                      "color": "#F28E2B",
+                      "label": "gimbal.yaw",
+                      "lineSize": 2,
+                      "showLine": true,
+                      "value": "/auto_aim/metrics.gimbal.yaw_unwrapped_deg",
+                      "timestampMethod": "customField",
+                      "timestampPath": "/auto_aim/metrics.timestamp"
+                    },
+                    {
+                      "enabled": true,
+                      "color": "#59A14F",
+                      "label": "plan.yaw",
+                      "lineSize": 2,
+                      "showLine": true,
+                      "value": "/auto_aim/metrics.plan.yaw_unwrapped_deg",
+                      "timestampMethod": "customField",
+                      "timestampPath": "/auto_aim/metrics.timestamp"
+                    }
+                  ],
+                  "showLegend": true,
+                  "legendDisplay": "top",
+                  "showPlotValuesInLegend": true,
+                  "showXAxisLabels": true,
+                  "showYAxisLabels": true,
+                  "isSynced": true,
+                  "xAxisVal": "timestamp",
+                  "xAxisLabel": "Time (s)",
+                  "timeWindowMode": "sliding",
+                  "playbackBarPosition": "right",
+                  "yAxisLabel": "Angle (deg)",
+                  "followingViewWidth": 20,
+                  "xAxisDisplayMethod": "relative",
+                  "showYAxisGridLines": true
+                },
+                "title": "Yaw: target / gimbal / plan",
+                "version": 1
+              }
+            },
+            {
+              "proportion": 1,
+              "content": {
+                "type": "panel",
+                "panelType": "Plot",
+                "config": {
+                  "paths": [
+                    {
+                      "enabled": true,
+                      "color": "#4E79A7",
+                      "label": "target.pitch",
+                      "lineSize": 2,
+                      "showLine": true,
+                      "value": "/auto_aim/metrics.target.pitch_deg",
+                      "timestampMethod": "customField",
+                      "timestampPath": "/auto_aim/metrics.timestamp"
+                    },
+                    {
+                      "enabled": true,
+                      "color": "#F28E2B",
+                      "label": "gimbal.pitch",
+                      "lineSize": 2,
+                      "showLine": true,
+                      "value": "/auto_aim/metrics.gimbal.pitch_deg",
+                      "timestampMethod": "customField",
+                      "timestampPath": "/auto_aim/metrics.timestamp"
+                    },
+                    {
+                      "enabled": true,
+                      "color": "#59A14F",
+                      "label": "plan.pitch",
+                      "lineSize": 2,
+                      "showLine": true,
+                      "value": "/auto_aim/metrics.plan.pitch_deg",
+                      "timestampMethod": "customField",
+                      "timestampPath": "/auto_aim/metrics.timestamp"
+                    }
+                  ],
+                  "showLegend": true,
+                  "legendDisplay": "top",
+                  "showPlotValuesInLegend": true,
+                  "showXAxisLabels": true,
+                  "showYAxisLabels": true,
+                  "isSynced": true,
+                  "xAxisVal": "timestamp",
+                  "xAxisLabel": "Time (s)",
+                  "timeWindowMode": "sliding",
+                  "playbackBarPosition": "right",
+                  "yAxisLabel": "Angle (deg)",
+                  "followingViewWidth": 20,
+                  "xAxisDisplayMethod": "relative",
+                  "showYAxisGridLines": true
+                },
+                "title": "Pitch: target / gimbal / plan",
+                "version": 1
+              }
+            }
+          ]
+        }
+      },
+      {
+        "proportion": 1,
+        "content": {
+          "type": "panel",
+          "panelType": "Plot",
+          "config": {
+            "paths": [
+              {
+                "enabled": true,
+                "color": "#E15759",
+                "label": "error.yaw",
+                "lineSize": 2,
+                "showLine": true,
+                "value": "/auto_aim/metrics.error.yaw_deg",
+                "timestampMethod": "customField",
+                "timestampPath": "/auto_aim/metrics.timestamp"
+              },
+              {
+                "enabled": true,
+                "color": "#B07AA1",
+                "label": "error.pitch",
+                "lineSize": 2,
+                "showLine": true,
+                "value": "/auto_aim/metrics.error.pitch_deg",
+                "timestampMethod": "customField",
+                "timestampPath": "/auto_aim/metrics.timestamp"
+              }
+            ],
+            "showLegend": true,
+            "legendDisplay": "top",
+            "showPlotValuesInLegend": true,
+            "showXAxisLabels": true,
+            "showYAxisLabels": true,
+            "isSynced": true,
+            "xAxisVal": "timestamp",
+            "xAxisLabel": "Time (s)",
+            "timeWindowMode": "sliding",
+            "playbackBarPosition": "right",
+            "yAxisLabel": "Angle (deg)",
+            "followingViewWidth": 20,
+            "xAxisDisplayMethod": "relative",
+            "showYAxisGridLines": true
+          },
+          "title": "Aim error: yaw / pitch",
+          "version": 1
+        }
+      }
+    ]
+  }
+}

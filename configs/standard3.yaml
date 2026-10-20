@@ -1,0 +1,63 @@
+enemy_color: "red"
+# enemy_color: "blue"
+
+#####-----神经网络参数-----#####
+yolo_name: yolov5
+classify_model: assets/tiny_resnet.onnx
+yolo11_model_path: assets/yolo11.xml
+yolov8_model_path: assets/yolov8.xml
+yolov5_model_path: assets/yolov5.xml
+device: GPU
+min_confidence: 0.8
+use_traditional: true
+
+#####-----tracker参数-----#####
+min_detect_count: 5
+max_temp_lost_count: 15
+outpost_max_temp_lost_count: 75
+
+#####-----aimer参数-----#####
+yaw_offset: 2 # degree -2.5
+pitch_offset: 6.5 # degree 2
+
+camera_name: "hikrobot"
+exposure_ms: 2.5
+gain: 16.9
+vid_pid: "2bdf:0001"
+
+#  1  0  0
+#  0  1  0
+#  0  0  1
+R_gimbal2imubody: [1, 0, 0, 0, 1, 0, 0, 0, 1]
+
+# 重投影误差: 0.1820px
+camera_matrix:
+  [1803.85723, 0., 698.29467, 0., 1800.27952, 579.92966, 0., 0., 1.]
+distort_coeffs: [-0.086982, 0.202748, -0.000254, 0.000123, 0.000000]
+
+# 相机同理想情况的偏角: yaw1.44 pitch-7.28 roll0.96 degree
+# 标定板到世界坐标系原点的水平距离: 1.13 m
+# 标定板同竖直摆放时的偏角: yaw7.61 pitch13.92 roll-0.46 degree
+R_camera2gimbal: [1, 0, 0, 0, 1, 0, 0, 0, 1]
+t_camera2gimbal: [0.0, -0.045, 0.045]
+
+#####-----gimbal参数-----#####
+com_port: "/dev/gimbal"
+
+#####-----buff_detector参数-----#####
+model: "assets/buffer-0624.xml"
+
+#####-----buff_aimer参数-----#####
+fire_gap_time: 0.700 # s
+predict_time: 0.120 # s
+
+#####-----planner-----#####
+fire_thresh: 0.0035
+
+max_yaw_acc: 50
+Q_yaw: [9e6, 0]
+R_yaw: [1]
+
+max_pitch_acc: 100
+Q_pitch: [9e6, 0]
+R_pitch: [1]

@@ -1,0 +1,61 @@
+# Bevy Talos v2, RGB8 1440x1080. Runtime CameraInfo overrides these intrinsics.
+enemy_color: blue
+min_detect_count: 3
+max_temp_lost_count: 15
+outpost_max_temp_lost_count: 75
+only_outpost: false
+# TODO(学生): 在此添加自己的滤波参数，并在 Target/Tracker 中读取。
+
+yolo_name: yolov5
+yolov5_model_path: assets/yolov5.xml
+device: GPU
+threshold: 100
+min_confidence: 0.45
+use_traditional: false
+use_roi: false
+roi: { x: 0, y: 0, width: -1, height: -1 }
+
+R_gimbal2imubody: [1, 0, 0, 0, 1, 0, 0, 0, 1]
+R_camera2gimbal: [0, 0, 1, -1, 0, 0, 0, -1, 0]
+t_camera2gimbal: [0, 0, 0]
+camera_matrix: [1303.68, 0, 720, 0, 1303.68, 540, 0, 0, 1]
+distort_coeffs: [0, 0, 0, 0, 0]
+
+sim:
+  shm_directory: /tmp
+  max_frame_age_ms: 100
+  control: true
+  fire: true
+  bullet_speed: 24.9
+  execution_delay_ms: 0
+  duration_s: 0
+planner:
+  yaw_offset: 0.0 # degrees
+  pitch_offset: 0.0
+  max_yaw_acc: 100.0 # rad/s^2
+  max_pitch_acc: 50.0
+  Q_yaw: [9e6, 0]
+  R_yaw: [1]
+  Q_pitch: [9e6, 0]
+  R_pitch: [1]
+  max_iter: 100
+  solver_tolerance: 0.0001
+  fire_thresh: 0.35 # MPC angular tracking error, radians
+  visibility_limit_deg: 45.0
+shooter:
+  yaw_tolerance_deg: 0.8
+  pitch_tolerance_deg: 0.6
+  visibility_angle_deg: 45.0
+  fire_interval_ms: 80.0
+  settle_time_ms: 20.0
+foxglove:
+  enabled: true
+  host: 127.0.0.1
+  port: 8765
+  rate_hz: 50
+  visual_rate_hz: 10
+plotjuggler:
+  enabled: true
+  host: 127.0.0.1
+  port: 9870
+  rate_hz: 100
