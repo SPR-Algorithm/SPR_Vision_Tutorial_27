@@ -23,6 +23,42 @@
 
 namespace sim_bridge
 {
+void ContinuousAngle::reset() { previous_.reset(); }
+
+double ContinuousAngle::update(double wrapped, double reference)
+{
+  auto wrap = [](double angle) {
+    constexpr double pi = 3.14159265358979323846;
+    const double result = std::remainder(angle, 2 * pi);
+    return result <= -pi ? result + 2 * pi : result;
+  };
+  if (previous_) value_ += wrap(wrapped - *previous_);
+  else value_ = reference + wrap(wrapped - reference);
+  previous_ = wrapped;
+  return value_;
+}
+
+nlohmann::json angle_fields(double yaw, double pitch, double continuous)
+{
+  constexpr double degrees = 180 / 3.14159265358979323846;
+  return {{"yaw", yaw}, {"pitch", pitch}, {"yaw_deg", yaw * degrees}, {"pitch_deg", pitch * degrees},
+          {"yaw_unwrapped", continuous}, {"yaw_unwrapped_deg", continuous * degrees}};
+}
+
+void SampleWindow::add(double value)
+{
+  samples_.push_back(value);
+  if (samples_.size() > 1000) samples_.pop_front();
+}
+
+double SampleWindow::percentile(double p) const
+{
+  if (samples_.empty()) return 0;
+  std::vector<double> sorted(samples_.begin(), samples_.end());
+  std::sort(sorted.begin(), sorted.end());
+  return sorted[static_cast<std::size_t>(std::ceil(p * (sorted.size() - 1)))];
+}
+
 namespace
 {
 namespace asio = boost::asio;
@@ -118,8 +154,7 @@ Json metrics_schema()
   for (const auto * name : {
     "timestamp_ns", "frame_seq", "generation", "frame_age_ms", "receive_to_process_ms",
     "processing_ms", "loop_ms", "fps", "received", "replaced", "mismatch", "reconnects",
-    "clock_resets", "detected", "raw_detected", "accepted", "state_dim", "center_x", "center_y", "center_z",
-    "yaw", "vyaw", "radius", "z0", "z1", "z2", "vz", "dh1", "dh2", "nis", "nis_failures",
+    "clock_resets", "detected", "raw_detected", "accepted",
     "command_yaw", "command_pitch", "prediction_horizon_ms", "debug_dropped", "update_count",
     "stale", "command_age_ms", "frame_age_p50_ms", "frame_age_p95_ms", "frame_age_p99_ms", "processing_p95_ms",
     "fire_yaw_error_deg", "fire_pitch_error_deg", "fire_cooldown_ms", "fire_stable_ms",
@@ -130,7 +165,7 @@ Json metrics_schema()
     "planning_ms", "planning_estimate_ms", "time"}) {
     properties[name] = {{"type", "number"}};
   }
-  for (const auto * name : {"tracking", "converged", "synthetic", "connected", "command_sent",
+  for (const auto * name : {"tracking", "converged", "connected", "command_sent",
     "planned_control", "solver_ok", "planner_fire", "fire", "following", "control_enabled",
     "fire_enabled", "measurement_valid"}) {
     properties[name] = {{"type", "boolean"}};
@@ -147,8 +182,6 @@ Json metrics_schema()
   properties["gimbal"] = object_schema(angles, {"valid"});
   Json reference = angles;
   reference["state_valid"] = {{"type", "boolean"}};
-  for (const auto *name : {"phase", "phase_deg", "phase_unwrapped", "phase_unwrapped_deg", "phase_rate"})
-    reference[name] = {{"type", "number"}};
   properties["target"] = object_schema(reference, {"valid", "state_valid"});
   Json planned = angles;
   for (const auto *name : {"yaw_vel", "pitch_vel", "yaw_acc", "pitch_acc"})
@@ -157,8 +190,6 @@ Json metrics_schema()
   properties["error"] = object_schema({{"valid", {{"type", "boolean"}}},
     {"yaw", {{"type", "number"}}}, {"pitch", {{"type", "number"}}},
     {"yaw_deg", {{"type", "number"}}}, {"pitch_deg", {{"type", "number"}}}}, {"valid"});
-  properties["P_diag"] = {{"type", "array"}, {"items", {{"type", "number"}}}};
-  properties["ekf_x"] = {{"type", "array"}, {"items", {{"type", "number"}}}};
   auto schema = object_schema(std::move(properties));
   schema["title"] = "auto_aim.DebugMetrics";
   schema["additionalProperties"] = true;

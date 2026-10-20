@@ -3,7 +3,6 @@
 #include <stdexcept>
 
 #include "hikrobot/hikrobot.hpp"
-#include "mindvision/mindvision.hpp"
 #include "tools/yaml.hpp"
 
 namespace io {

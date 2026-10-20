@@ -3,8 +3,8 @@
 
 #include "io/camera.hpp"
 #include "io/gimbal/gimbal.hpp"
-#include "tasks/auto_aim/solver.hpp"
-#include "tasks/auto_aim/yolo.hpp"
+#include "task/auto_aim/solver.hpp"
+#include "task/auto_aim/yolo.hpp"
 #include "tools/exiter.hpp"
 #include "tools/img_tools.hpp"
 #include "tools/logger.hpp"

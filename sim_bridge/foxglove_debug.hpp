@@ -6,12 +6,36 @@
 #include <nlohmann/json.hpp>
 
 #include <cstdint>
+#include <deque>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
 namespace sim_bridge
 {
+
+// Plot helpers shared by Foxglove and PlotJuggler. Control angles stay wrapped.
+class ContinuousAngle
+{
+public:
+  void reset();
+  double update(double wrapped, double reference = 0);
+private:
+  std::optional<double> previous_;
+  double value_ = 0;
+};
+
+nlohmann::json angle_fields(double yaw, double pitch, double continuous);
+
+class SampleWindow
+{
+public:
+  void add(double value);
+  double percentile(double p) const;
+private:
+  std::deque<double> samples_;
+};
 
 struct DebugFrame
 {

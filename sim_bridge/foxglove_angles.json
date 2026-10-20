@@ -130,94 +130,48 @@
       {
         "proportion": 1,
         "content": {
-          "type": "split",
-          "direction": "row",
-          "items": [
-            {
-              "proportion": 1,
-              "content": {
-                "type": "panel",
-                "panelType": "Plot",
-                "config": {
-                  "paths": [
-                    {
-                      "enabled": true,
-                      "color": "#E15759",
-                      "label": "error.yaw",
-                      "lineSize": 2,
-                      "showLine": true,
-                      "value": "/auto_aim/metrics.error.yaw_deg",
-                      "timestampMethod": "customField",
-                      "timestampPath": "/auto_aim/metrics.timestamp"
-                    },
-                    {
-                      "enabled": true,
-                      "color": "#B07AA1",
-                      "label": "error.pitch",
-                      "lineSize": 2,
-                      "showLine": true,
-                      "value": "/auto_aim/metrics.error.pitch_deg",
-                      "timestampMethod": "customField",
-                      "timestampPath": "/auto_aim/metrics.timestamp"
-                    }
-                  ],
-                  "showLegend": true,
-                  "legendDisplay": "top",
-                  "showPlotValuesInLegend": true,
-                  "showXAxisLabels": true,
-                  "showYAxisLabels": true,
-                  "isSynced": true,
-                  "xAxisVal": "timestamp",
-                  "xAxisLabel": "Time (s)",
-                  "timeWindowMode": "sliding",
-                  "playbackBarPosition": "right",
-                  "yAxisLabel": "Angle (deg)",
-                  "followingViewWidth": 20,
-                  "xAxisDisplayMethod": "relative",
-                  "showYAxisGridLines": true
-                },
-                "title": "Aim error: yaw / pitch",
-                "version": 1
+          "type": "panel",
+          "panelType": "Plot",
+          "config": {
+            "paths": [
+              {
+                "enabled": true,
+                "color": "#E15759",
+                "label": "error.yaw",
+                "lineSize": 2,
+                "showLine": true,
+                "value": "/auto_aim/metrics.error.yaw_deg",
+                "timestampMethod": "customField",
+                "timestampPath": "/auto_aim/metrics.timestamp"
+              },
+              {
+                "enabled": true,
+                "color": "#B07AA1",
+                "label": "error.pitch",
+                "lineSize": 2,
+                "showLine": true,
+                "value": "/auto_aim/metrics.error.pitch_deg",
+                "timestampMethod": "customField",
+                "timestampPath": "/auto_aim/metrics.timestamp"
               }
-            },
-            {
-              "proportion": 1,
-              "content": {
-                "type": "panel",
-                "panelType": "Plot",
-                "config": {
-                  "paths": [
-                    {
-                      "enabled": true,
-                      "color": "#4E79A7",
-                      "label": "target.phase",
-                      "lineSize": 2,
-                      "showLine": true,
-                      "value": "/auto_aim/metrics.target.phase_unwrapped_deg",
-                      "timestampMethod": "customField",
-                      "timestampPath": "/auto_aim/metrics.timestamp"
-                    }
-                  ],
-                  "showLegend": true,
-                  "legendDisplay": "top",
-                  "showPlotValuesInLegend": true,
-                  "showXAxisLabels": true,
-                  "showYAxisLabels": true,
-                  "isSynced": true,
-                  "xAxisVal": "timestamp",
-                  "xAxisLabel": "Time (s)",
-                  "timeWindowMode": "sliding",
-                  "playbackBarPosition": "right",
-                  "yAxisLabel": "Angle (deg)",
-                  "followingViewWidth": 20,
-                  "xAxisDisplayMethod": "relative",
-                  "showYAxisGridLines": true
-                },
-                "title": "Target armor phase (independent scale)",
-                "version": 1
-              }
-            }
-          ]
+            ],
+            "showLegend": true,
+            "legendDisplay": "top",
+            "showPlotValuesInLegend": true,
+            "showXAxisLabels": true,
+            "showYAxisLabels": true,
+            "isSynced": true,
+            "xAxisVal": "timestamp",
+            "xAxisLabel": "Time (s)",
+            "timeWindowMode": "sliding",
+            "playbackBarPosition": "right",
+            "yAxisLabel": "Angle (deg)",
+            "followingViewWidth": 20,
+            "xAxisDisplayMethod": "relative",
+            "showYAxisGridLines": true
+          },
+          "title": "Aim error: yaw / pitch",
+          "version": 1
         }
       }
     ]

@@ -6,6 +6,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include <algorithm>
 #include <atomic>
 #include <cmath>
 #include <condition_variable>
@@ -17,13 +18,42 @@
 #include <vector>
 
 namespace sim_bridge {
-namespace {
-using Clock = std::chrono::steady_clock;
-using namespace std::chrono_literals;
 std::uint64_t unix_ns() {
   return std::chrono::duration_cast<std::chrono::nanoseconds>(
     std::chrono::system_clock::now().time_since_epoch()).count();
 }
+double milliseconds(std::chrono::steady_clock::duration dt) {
+  return std::chrono::duration<double, std::milli>(dt).count();
+}
+double capture_age_ms(const SimFrame & frame, std::chrono::steady_clock::time_point now) {
+  double age = std::max(0.0, milliseconds(now - frame.timestamp));
+  // Preserve actual capture age across epoch/sequence resets. The transport's
+  // monotonic timestamp may be shifted to maintain order during a restart.
+  const auto wall = unix_ns();
+  if (frame.timestamp_ns > 0 && wall >= frame.timestamp_ns)
+    age = std::max(age, (wall - frame.timestamp_ns) / 1e6);
+  return age;
+}
+Eigen::Matrix3d SimFrame::camera_matrix() const {
+  Eigen::Matrix3d matrix;
+  matrix << camera.fx, 0, camera.cx, 0, camera.fy, camera.cy, 0, 0, 1;
+  return matrix;
+}
+Eigen::Matrix<double, 5, 1> SimFrame::distortion_coeffs() const {
+  Eigen::Matrix<double, 5, 1> coefficients;
+  for (int i = 0; i < 5; ++i) coefficients[i] = camera.distortion[i];
+  return coefficients;
+}
+Eigen::Quaterniond SimFrame::world_camera_rotation() const {
+  return q_world_gimbal * q_gimbal_camera;
+}
+Eigen::Vector3d SimFrame::world_camera_position() const {
+  return p_world_gimbal + q_world_gimbal * t_gimbal_camera;
+}
+
+namespace {
+using Clock = std::chrono::steady_clock;
+using namespace std::chrono_literals;
 std::uint8_t load_state(const std::uint8_t & state) {
   return __atomic_load_n(&state, __ATOMIC_ACQUIRE);
 }

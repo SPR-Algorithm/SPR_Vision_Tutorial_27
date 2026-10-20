@@ -1,7 +1,6 @@
 #include "extended_kalman_filter.hpp"
 
 #include <algorithm>
-#include <array>
 #include <cmath>
 #include <numeric>
 #include <stdexcept>
@@ -61,14 +60,14 @@ Eigen::VectorXd ExtendedKalmanFilter::update(
 
 double ExtendedKalmanFilter::nis_threshold(int dimension)
 {
-  // Upper chi-square quantiles at 99.9%, for a stacked 4D armor observation.
+  // Upper chi-square quantiles at 99.9%, indexed by observation dimension.
   switch (dimension) {
     case 4: return 18.467;
     case 8: return 26.125;
     case 12: return 32.909;
     case 16: return 39.252;
     default:
-      // Wilson-Hilferty approximation; only the 4/8/12/16D cases are used by Target.
+      // Wilson-Hilferty approximation for dimensions not tabulated above.
       const double n = std::max(1, dimension);
       return n * std::pow(1.0 - 2.0 / (9.0 * n) + 3.090232 * std::sqrt(2.0 / (9.0 * n)), 3);
   }
@@ -139,8 +138,11 @@ void ExtendedKalmanFilter::record_innovation(
   data["recent_nis_failures"] = static_cast<double>(
     std::accumulate(recent_nis_failures.begin(), recent_nis_failures.end(), 0)) /
     recent_nis_failures.size();
-  const std::array<const char *, 4> keys{
-    "residual_yaw", "residual_pitch", "residual_distance", "residual_angle"};
-  for (int i = 0; i < 4; ++i) data[keys[i]] = i < residual.size() ? residual[i] : 0.0;
+  for (auto item = data.begin(); item != data.end();) {
+    if (item->first.rfind("residual_", 0) == 0) item = data.erase(item);
+    else ++item;
+  }
+  for (Eigen::Index i = 0; i < residual.size(); ++i)
+    data["residual_" + std::to_string(i)] = residual[i];
 }
 }  // namespace tools

@@ -64,10 +64,7 @@ def build_panels():
         series("error.yaw_deg", "error.yaw", "#E15759"),
         series("error.pitch_deg", "error.pitch", "#B07AA1"),
     ])
-    phase = plot("Target armor phase (independent scale)", [
-        series("target.phase_unwrapped_deg", "target.phase", COLORS["target"]),
-    ])
-    return {"yaw": yaw, "pitch": pitch, "error": error, "phase": phase}
+    return {"yaw": yaw, "pitch": pitch, "error": error}
 
 
 def build_layout():
@@ -76,9 +73,7 @@ def build_layout():
         SplitItem(content=SplitContainer(direction="row", items=[
             SplitItem(content=panels["yaw"]), SplitItem(content=panels["pitch"]),
         ])),
-        SplitItem(content=SplitContainer(direction="row", items=[
-            SplitItem(content=panels["error"]), SplitItem(content=panels["phase"]),
-        ])),
+        SplitItem(content=panels["error"]),
     ]))
 
 

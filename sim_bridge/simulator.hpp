@@ -28,7 +28,17 @@ struct SimFrame {
   // only, not synchronized ground truth or part of the firing decision.
   std::uint32_t launch_count = 0, hit_count = 0;
   std::uint64_t generation = 0;
+
+  Eigen::Matrix3d camera_matrix() const;
+  Eigen::Matrix<double, 5, 1> distortion_coeffs() const;
+  Eigen::Quaterniond world_camera_rotation() const;
+  Eigen::Vector3d world_camera_position() const;
 };
+std::uint64_t unix_ns();
+double milliseconds(std::chrono::steady_clock::duration dt);
+double capture_age_ms(
+  const SimFrame & frame,
+  std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now());
 struct Stats {
   std::uint64_t received = 0, replaced = 0, mismatch = 0, reconnects = 0;
   std::uint64_t stale_heartbeat = 0, clock_resets = 0, malformed = 0;
