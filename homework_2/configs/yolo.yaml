@@ -3,7 +3,7 @@ classify_model: assets/tiny_resnet.onnx
 yolov5_model_path: "assets/yolov5.xml"
 device: CPU
 min_confidence: 0.1
-use_traditional: true
+use_traditional: false
 roi:
   x: 420
   y: 50

@@ -54,11 +54,15 @@ int main(int argc, char** argv) {
         auto armors = yolo.detect(frame);
                 std::cout << "识别完成,装甲板数量：" << armors.size() << std::endl;
         for (const auto& armor : armors) {
-            cv::polylines(frame, armor.points, true, {0, 255, 0}, 2);
+            std::vector<cv::Point> int_points;
             for (const auto& p : armor.points) {
+                int_points.push_back(cv::Point(cvRound(p.x), cvRound(p.y)));
+            }
+            cv::polylines(frame, int_points, true, {0, 255, 0}, 2);
+            for (const auto& p : int_points) {
                 cv::circle(frame, p, 4, {0, 0, 255}, -1);
             }
-            cv::putText(frame, "Armor", armor.points[0], cv::FONT_HERSHEY_SIMPLEX, 0.5, {0, 255, 0}, 1);
+            cv::putText(frame, "Armor", int_points[0], cv::FONT_HERSHEY_SIMPLEX, 0.5, {0, 255, 0}, 1);
         }
 
         frame_count++;
