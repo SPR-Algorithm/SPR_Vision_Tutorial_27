@@ -27,6 +27,7 @@ private:
   std::string state_ = "lost";
 
   // TODO(学生): 补充目标管理所需的数据。
+  int lost_count_ = 0;
 };
 }  // namespace auto_aim
 

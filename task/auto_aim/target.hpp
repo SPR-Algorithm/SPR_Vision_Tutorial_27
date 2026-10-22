@@ -48,8 +48,11 @@ private:
   tools::ExtendedKalmanFilter ekf_;
   bool initialized_ = false;
   TimePoint timestamp_{};
-
+  
   // TODO(学生): 按自己的建模方案补充内部数据与方法。
+  int last_armor_id_ = -1; // 新增这一行，记录最后观测到的装甲板ID
+  Eigen::Vector<double, 6> last_state_;
+  Eigen::Vector3d last_vel_;
 };
 }  // namespace auto_aim
 

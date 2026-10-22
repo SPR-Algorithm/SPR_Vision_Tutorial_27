@@ -8,7 +8,7 @@ only_outpost: false
 
 yolo_name: yolov5
 yolov5_model_path: assets/yolov5.xml
-device: GPU
+device: CPU
 threshold: 100
 min_confidence: 0.45
 use_traditional: false
