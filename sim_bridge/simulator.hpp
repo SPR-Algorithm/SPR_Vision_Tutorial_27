@@ -23,7 +23,8 @@ struct SimFrame {
   Eigen::Vector3d t_gimbal_camera = Eigen::Vector3d::Zero();
   Eigen::Vector3d t_gimbal_muzzle = Eigen::Vector3d::Zero();
   CameraInfo camera{};
-  bool following = false, discontinuity = false;
+  bool following = false; 
+  bool discontinuity = false;
   // Optional companion counters in RuntimeState reserved bytes; monitoring
   // only, not synchronized ground truth or part of the firing decision.
   std::uint32_t launch_count = 0, hit_count = 0;
@@ -62,3 +63,4 @@ private:
   std::unique_ptr<Impl> impl_;
 };
 }  // namespace sim_bridge
+

@@ -8,7 +8,7 @@ only_outpost: false
 
 yolo_name: yolov5
 yolov5_model_path: assets/yolov5.xml
-device: GPU
+device: CPU
 threshold: 100
 min_confidence: 0.45
 use_traditional: false
@@ -23,12 +23,26 @@ distort_coeffs: [0, 0, 0, 0, 0]
 
 sim:
   shm_directory: /tmp
-  max_frame_age_ms: 100
+  max_frame_age_ms: 500
   control: true
   fire: true
   bullet_speed: 24.9
   execution_delay_ms: 0
   duration_s: 0
+
+target:
+  # Measurement noise (R)
+  R_pos: 0.04        # (m^2) — PnP position noise, ~0.2m std
+  R_yaw: 0.1         # (rad^2) — PnP yaw noise, ~0.32rad std
+
+  # Process noise (Q) — white acceleration
+  sa2_pos: 1.0       # (m/s^2)^2 — xe tăng accel ~1 m/s^2
+  sa2_yaw: 0.01      # (rad/s^2)^2 — Task 1 không xoay thân → rất nhỏ
+
+  # Data association gate
+  gate_dist2: 4.0    # (m^2) — 2m
+  gate_yaw: 0.5      # rad — ~28°
+  
 planner:
   yaw_offset: 0.0 # degrees
   pitch_offset: 0.0

@@ -11,46 +11,60 @@
 
 namespace auto_aim
 {
-using TimePoint = std::chrono::steady_clock::time_point;
+  using TimePoint = std::chrono::steady_clock::time_point;
 
-// 控制与可视化使用的输出格式，不规定滤波器的内部状态。
-struct PredictedArmor
-{
-  // 与输入观测相同的世界坐标系，位置单位 m。
-  // 朝向沿用 Solver 写入的 Armor::ypr_in_world[0] 约定，单位 rad。
-  Eigen::Vector4d xyza = Eigen::Vector4d::Zero();
-  // 维护的非负关联编号，默认 -1 表示无效；不是模拟器真值编号。
-  int id = -1;
-};
+  // 控制与可视化使用的输出格式，不规定滤波器的内部状态。
+  // Định dạng đầu ra dùng cho điều khiển và hiển thị, không quy định trạng thái nội bộ của bộ lọc.
+  struct PredictedArmor
+  {
+    // 与输入观测相同的世界坐标系，位置单位 m。
+    // 朝向沿用 Solver 写入的 Armor::ypr_in_world[0] 约定，单位 rad。
+    // Cùng hệ tọa độ thế giới với observation đầu vào, đơn vị vị trí là m.
+    // Hướng tuân theo quy ước Armor::ypr_in_world[0] do Solver ghi, đơn vị rad.
+    Eigen::Vector4d xyza = Eigen::Vector4d::Zero();
+    // 维护的非负关联编号，默认 -1 表示无效；不是模拟器真值编号。
+    // ID liên kết không âm được duy trì, mặc định -1 nghĩa là không hợp lệ.
+    int id = -1;
+  };
 
-struct Prediction
-{
-  bool valid = false;
-  std::vector<PredictedArmor> armors;
-};
+  struct Prediction
+  {
+    bool valid = false;
+    std::vector<PredictedArmor> armors;
+  };
 
-class Target
-{
-public:
-  explicit Target(const std::string & config_path);
+  class Target
+  {
+  public:
+    explicit Target(const std::string &config_path);
 
-  void reset();
+    void reset();
 
-  // observations 应先由调用者通过 Solver 解算到同一世界坐标系。
-  // timestamp 是这帧观测的采集时刻，不能以处理完成时刻替代。
-  void update(const std::vector<Armor> & observations, TimePoint timestamp);
+    // observations 应先由调用者通过 Solver 解算到同一世界坐标系。
+    // timestamp 是这帧观测的采集时刻，不能以处理完成时刻替代。
+    // observations trước tiên phải được người gọi thông qua Solver giải quyết về cùng hệ tọa độ thế giới.
+    // timestamp là thời điểm thu thập của frame observation này.
+    void update(const std::vector<Armor> &observations, TimePoint timestamp);
 
-  // 查询指定未来时刻的预测结果，不改变当前滤波状态。
-  Prediction predict(TimePoint query_time) const;
+    // 查询指定未来时刻的预测结果，不改变当前滤波状态。
+    // Truy vấn kết quả dự đoán tại thời điểm tương lai, không thay đổi trạng thái lọc hiện tại.
+    Prediction predict(TimePoint query_time) const;
 
-private:
-  std::string config_path_;
-  tools::ExtendedKalmanFilter ekf_;
-  bool initialized_ = false;
-  TimePoint timestamp_{};
+  private:
+    std::string config_path_;
+    tools::ExtendedKalmanFilter ekf_;
+    bool initialized_ = false;
+    TimePoint timestamp_{};
 
-  // TODO(学生): 按自己的建模方案补充内部数据与方法。
-};
-}  // namespace auto_aim
+    // Trạng thái EKF 6 chiều: [x, y, z, vx, vy, vz]
+    static constexpr int STATE_DIM = 6; // State dimension
+    static constexpr int MEAS_DIM = 3;  // [x, y, z] - measurement dimension (z-dữ liệu thô (thực tế) mà cảm biến (YOLO + Solver) vừa đo được từ bức ảnh)
 
-#endif  // AUTO_AIM__TARGET_HPP
+    // TODO(学生): 按自己的建模方案补充内部数据与方法。
+    int last_armor_id_ = -1;
+    double last_yaw_ = 0.0;
+
+  };
+} // namespace auto_aim
+
+#endif // AUTO_AIM__TARGET_HPP

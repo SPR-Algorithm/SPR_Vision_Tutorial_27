@@ -19,8 +19,10 @@
 using namespace std::chrono_literals;
 
 int main(int argc, char *argv[]) try {
+  std::cout << "[DEBUG 1] Loading config..." << std::endl;
   const auto options = sim_bridge::load_sim_options(argc, argv);
   const auto &config_path = options.config;
+  std::cout << "[DEBUG 1.1] Config loaded. Config path: " << config_path << std::endl;
 
   // 初始化工具类
   tools::Exiter exiter;
@@ -30,7 +32,10 @@ int main(int argc, char *argv[]) try {
   }
 
   // 初始化仿真io类
+  std::cout << "[DEBUG 2] Initializing Simulator..." << std::endl;
   sim_bridge::Simulator simulator(options.shm_directory);
+  std::cout << "[DEBUG 2.1] Simulator initialized." << std::endl;
+
   std::unique_ptr<sim_bridge::FoxgloveDebug> foxglove;
   if (options.foxglove_enabled) {
     foxglove = std::make_unique<sim_bridge::FoxgloveDebug>(
@@ -39,10 +44,15 @@ int main(int argc, char *argv[]) try {
   }
 
   // 初始化auto_aim类
+  std::cout << "[DEBUG 3] Initializing YOLO ..." << std::endl;
   auto_aim::YOLO yolo(config_path, true);
+  std::cout << "[DEBUG 3.1] YOLO initialized!" << std::endl;
+
+  std::cout << "[DEBUG 4] Initializing Solver, Tracker, Planner..." << std::endl;
   auto_aim::Solver solver(config_path);
   auto_aim::Tracker tracker(config_path);
   auto_aim::Planner planner(config_path);
+  std::cout << "[DEBUG 4.1] Solver, Tracker, Planner initialized!" << std::endl;
 
   sim_bridge::SimFrame frame;
   sim_bridge::DebugFrame debug_frame;
@@ -51,11 +61,12 @@ int main(int argc, char *argv[]) try {
   auto last_plot_time = start_time; 
   int frame_count = 0;
 
+  std::cout << "[DEBUG 5] Entering main loop (waiting for frames from Simulator)..." << std::endl;
   while (!exiter.exit()) {
-    // Your code start
 
     // Read frame with 50ms timeout, skip iteration if none arrives
     if(!simulator.read(frame,50ms)) continue;
+    std::cout << "[DEBUG 6] Received frame! Sequence: " << frame.sequence << std::endl;
 
      //check duration limit
     auto now = std::chrono::steady_clock::now(); // new value each loop
@@ -70,6 +81,7 @@ int main(int argc, char *argv[]) try {
 
     //detection
     auto armors = yolo.detect(frame.bgr, frame_count++);
+    std::cout << "[DEBUG 7] YOLO detected" << armors.size() << " armors." << std::endl;
     if (armors.empty()) {
       continue;
     }
@@ -87,14 +99,17 @@ int main(int argc, char *argv[]) try {
         observations.push_back(armor);
       }
     }
+    std::cout << "[DEBUG 8] Solver successfully solved " << observations.size() << " armors." << std::endl;
     if(observations.empty()) continue;
 
     //track
     if(frame.discontinuity) tracker.reset();
     auto target_opt = tracker.track(observations, frame.timestamp);
+    std::cout << "[DEBUG 9] Tracker has target: " << (target_opt.has_value() ? "YES" : "NO") << std::endl;
     if (!target_opt.has_value()){
       continue;
     }
+
     auto& target= target_opt.value();
 
      // build planning context
