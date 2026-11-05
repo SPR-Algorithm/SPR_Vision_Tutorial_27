@@ -42,5 +42,5 @@
 - [Navigation2 官方文档](https://docs.nav2.org/)
 - [Navigation2 中文文档](http://dev.nav2.fishros.com/doc/index.html)
 - [FAST-LIO 源码](https://github.com/hku-mars/FAST_LIO/tree/ROS2)
-- [Point-LIO 源码](https://github.com/hku-mars/Point-LIO)
+- [Point-LIO ROS2实现](https://github.com/LihanChen2004/Point-LIO)
 - [ROS2 机器人入门到实战](https://zhuanlan.zhihu.com/p/639234090)
