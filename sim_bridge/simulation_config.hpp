@@ -7,7 +7,7 @@ namespace sim_bridge {
 struct SimOptions {
   std::string config;
   double duration = 0;
-  double max_age_ms = 100;
+  double max_age_ms = 500;
   double bullet_speed = 25;
   double delay_s = 0;
   double plot_rate = 100;

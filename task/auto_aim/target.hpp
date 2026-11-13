@@ -13,17 +13,10 @@ namespace auto_aim
 {
   using TimePoint = std::chrono::steady_clock::time_point;
 
-  // 控制与可视化使用的输出格式，不规定滤波器的内部状态。
-  // Định dạng đầu ra dùng cho điều khiển và hiển thị, không quy định trạng thái nội bộ của bộ lọc.
   struct PredictedArmor
   {
-    // 与输入观测相同的世界坐标系，位置单位 m。
-    // 朝向沿用 Solver 写入的 Armor::ypr_in_world[0] 约定，单位 rad。
-    // Cùng hệ tọa độ thế giới với observation đầu vào, đơn vị vị trí là m.
-    // Hướng tuân theo quy ước Armor::ypr_in_world[0] do Solver ghi, đơn vị rad.
+    // Cùng hệ tọa độ thế giới với observation, đơn vị m, rad.
     Eigen::Vector4d xyza = Eigen::Vector4d::Zero();
-    // 维护的非负关联编号，默认 -1 表示无效；不是模拟器真值编号。
-    // ID liên kết không âm được duy trì, mặc định -1 nghĩa là không hợp lệ.
     int id = -1;
   };
 
@@ -40,15 +33,20 @@ namespace auto_aim
 
     void reset();
 
-    // observations 应先由调用者通过 Solver 解算到同一世界坐标系。
-    // timestamp 是这帧观测的采集时刻，不能以处理完成时刻替代。
-    // observations trước tiên phải được người gọi thông qua Solver giải quyết về cùng hệ tọa độ thế giới.
-    // timestamp là thời điểm thu thập của frame observation này.
-    void update(const std::vector<Armor> &observations, TimePoint timestamp);
+    // Trả về true nếu update thực sự xảy ra (có observation hợp lệ qua gate).
+    // Trả về false nếu không có observation hợp lệ (outlier, rỗng, chưa init
+    // nhưng observation không hợp lệ).
+    // Tracker dùng kết quả này để phân biệt "mất khung" vs "detect sai".
+    bool update(const std::vector<Armor> &observations, TimePoint timestamp);
 
-    // 查询指定未来时刻的预测结果，不改变当前滤波状态。
-    // Truy vấn kết quả dự đoán tại thời điểm tương lai, không thay đổi trạng thái lọc hiện tại.
+    // Dự đoán tại thời điểm tương lai, không thay đổi state hiện tại.
     Prediction predict(TimePoint query_time) const;
+
+    // Cho Tracker kiểm tra target đã khởi tạo chưa (tránh dùng target_ rỗng).
+    bool is_initialized() const { return initialized_; }
+
+    // Lấy state hiện tại để debug (vận tốc, vị trí)
+    Eigen::VectorXd get_state() const { return ekf_.x; }
 
   private:
     std::string config_path_;
@@ -56,15 +54,41 @@ namespace auto_aim
     bool initialized_ = false;
     TimePoint timestamp_{};
 
-    // Trạng thái EKF 6 chiều: [x, y, z, vx, vy, vz]
-    static constexpr int STATE_DIM = 6; // State dimension
-    static constexpr int MEAS_DIM = 3;  // [x, y, z] - measurement dimension (z-dữ liệu thô (thực tế) mà cảm biến (YOLO + Solver) vừa đo được từ bức ảnh)
+    // State 8D: [x, y, z, vx, vy, vz, yaw, vyaw]
+    // Layout: 3 vị trí, 3 vận tốc, yaw, vyaw — giữ tương thích với code cũ
+    // (chỉ append yaw, vyaw vào cuối).
+    static constexpr int STATE_DIM = 8;
+    static constexpr int MEAS_DIM = 4;  // [x, y, z, yaw]
 
-    // TODO(学生): 按自己的建模方案补充内部数据与方法。
     int last_armor_id_ = -1;
-    double last_yaw_ = 0.0;
 
+    // R (nhiễu đo) — tách 3 trục vị trí + yaw (vì σz > σxy, và yaw riêng).
+    double R_x_, R_y_, R_z_, R_yaw_;
+
+    // Q (nhiễu quá trình) — tách 4 cặp (x, y, z, yaw).
+    // Đơn vị: m²/s³ cho vị trí, rad²/s³ cho yaw.
+    double sa2_x_, sa2_y_, sa2_z_, sa2_yaw_;
+
+    // Gate Mahalanobis — chi-square 95%, 4 DOF = 9.49.
+    double gate_chi2_;
+
+    // Hàm dựng measurement từ Armor (hệ world).
+    Eigen::VectorXd build_measurement(const Armor &armor) const;
+
+    // Hàm chiếu state → measurement (dùng cho h và innovation).
+    Eigen::VectorXd state_to_measurement(const Eigen::VectorXd &x) const;
+
+    // Jacobian H (tuyến tính hóa h tại x̂).
+    Eigen::MatrixXd build_H() const;
+
+    // Wrap góc về (-π, π].
+    static double wrap_pi(double a);
+
+    // Trừ vector, wrap riêng thành phần yaw (index 3 của measurement).
+    // Dùng làm z_sub trong ekf_.correct — bắt buộc cho yaw.
+    static Eigen::VectorXd angle_sub(const Eigen::VectorXd &a,
+                                     const Eigen::VectorXd &b);
   };
-} // namespace auto_aim
+}  // namespace auto_aim
 
-#endif // AUTO_AIM__TARGET_HPP
+#endif  // AUTO_AIM__TARGET_HPP

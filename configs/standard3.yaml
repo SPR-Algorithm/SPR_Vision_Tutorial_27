@@ -7,7 +7,7 @@ classify_model: assets/tiny_resnet.onnx
 yolo11_model_path: assets/yolo11.xml
 yolov8_model_path: assets/yolov8.xml
 yolov5_model_path: assets/yolov5.xml
-device: GPU
+device: CPU
 min_confidence: 0.8
 use_traditional: true
 
@@ -51,6 +51,10 @@ model: "assets/buffer-0624.xml"
 fire_gap_time: 0.700 # s
 predict_time: 0.120 # s
 
+#####----- Hardware & Latency -----#####
+execution_delay_ms: 20.0
+t_gimbal_muzzle: [0.0, 0.0, 0.0]  # Đo thực tế trên xe Standard 3, tạm để 0
+
 #####-----planner-----#####
 fire_thresh: 0.0035
 
@@ -61,3 +65,24 @@ R_yaw: [1]
 max_pitch_acc: 100
 Q_pitch: [9e6, 0]
 R_pitch: [1]
+
+#####-----target EKF parameters-----#####
+target:
+  # R: Nhiễu đo PnP (m^2 cho x,y,z; rad^2 cho yaw)
+  # Số liệu dưới đây là ước lượng ban đầu, bạn sẽ đo lại khi thực nghiệm.
+  R_x: 0.0004    # (2cm)^2
+  R_y: 0.0004    # (2cm)^2
+  R_z: 0.0009    # (3cm)^2 (Trục z/depth thường nhiễu hơn)
+  R_yaw: 0.0001  # (0.01rad)^2 (~0.57 độ)
+
+  # Q: Cường độ nhiễu gia tốc trắng (m^2/s^3 cho x,y,z; rad^2/s^3 cho yaw)
+  # Dùng để cân bằng giữa việc tin mô hình (Q nhỏ) và tin camera (Q lớn).
+  sa2_x: 2.0
+  sa2_y: 2.0
+  sa2_z: 0.5     # Xe thường ít nhảy dọc
+  sa2_yaw: 3.0   # Con quay có thể khởi quay đột ngột
+
+  # Gate: Ngưỡng Mahalanobis (Chi-square 95%, 4 DOF = 9.49)
+  gate_chi2: 9.49
+
+  #Nếu súng rung lắc dữ dội, hãy vào file YAML giảm sa2_x, sa2_y xuống. Nếu súng quay chậm (lag), tăng sa2_x, sa2_y lên.

@@ -23,7 +23,7 @@ distort_coeffs: [0, 0, 0, 0, 0]
 
 sim:
   shm_directory: /tmp
-  max_frame_age_ms: 500
+  max_frame_age_ms: 100
   control: true
   fire: true
   bullet_speed: 24.9
@@ -31,17 +31,20 @@ sim:
   duration_s: 0
 
 target:
-  # Measurement noise (R)
-  R_pos: 0.04        # (m^2) — PnP position noise, ~0.2m std
-  R_yaw: 0.1         # (rad^2) — PnP yaw noise, ~0.32rad std
+  # R — nhiễu đo PnP (đo từ log, xem analyze_r.py)
+  R_x: 0.0004      # (2cm)²
+  R_y: 0.0004
+  R_z: 0.0009      # (3cm)² — depth kém chính xác hơn
+  R_yaw: 0.0001    # (0.01rad)² ≈ (0.57°)²
 
-  # Process noise (Q) — white acceleration
-  sa2_pos: 1.0       # (m/s^2)^2 — xe tăng accel ~1 m/s^2
-  sa2_yaw: 0.01      # (rad/s^2)^2 — Task 1 không xoay thân → rất nhỏ
+  # Q — cường độ nhiễu gia tốc trắng
+  sa2_x: 2.0       # m²/s³
+  sa2_y: 2.0
+  sa2_z: 0.5
+  sa2_yaw: 3.0     # rad²/s³ — con quay có thể khởi quay
 
-  # Data association gate
-  gate_dist2: 4.0    # (m^2) — 2m
-  gate_yaw: 0.5      # rad — ~28°
+  # Gate Mahalanobis — chi-square 95%, 4 DOF = 9.49
+  gate_chi2: 9.49
   
 planner:
   yaw_offset: 0.0 # degrees
