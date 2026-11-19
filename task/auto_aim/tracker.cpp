@@ -1,71 +1,135 @@
 #include "tracker.hpp"
+
+#include <vector>
+
+#include <yaml-cpp/yaml.h>
+
 #include "tools/logger.hpp"
 
 namespace auto_aim
 {
-  Tracker::Tracker(const std::string &config_path) : target_(config_path) {}
-
-  void Tracker::reset()
+Tracker::Tracker(const std::string &config_path) : target_(config_path)
+{
+  try
   {
-    target_.reset();
-    state_ = "lost";
-    // TODO(学生): 清理自己增加的目标管理数据。
-    last_update_time_ = TimePoint{};
-    lost_frames_count_ = 0; // debug
+    const YAML::Node config = YAML::LoadFile(config_path);
+    const YAML::Node cfg = config["tracker"] ? config["tracker"] : config;
+    max_lost_time_s_ = cfg["max_lost_time_s"].as<double>(max_lost_time_s_);
+    confirm_frames_ = cfg["confirm_frames"].as<int>(confirm_frames_);
   }
-  std::string Tracker::state() const
+  catch (const std::exception &e)
   {
-    return state_;
+    tools::logger()->warn("Tracker config load failed: {}, using defaults", e.what());
+  }
+}
+
+void Tracker::reset()
+{
+  target_.reset();
+  state_ = State::Lost;
+  last_update_time_ = TimePoint{};
+  confirm_count_ = 0;
+  last_generation_ = target_.generation();
+}
+
+std::string Tracker::state() const
+{
+  switch (state_)
+  {
+    case State::Lost: return "lost";
+    case State::Detecting: return "detecting";
+    case State::Tracking: return "tracking";
+    case State::TempLost: return "temp_lost";
+  }
+  return "lost";
+}
+
+void Tracker::set_state(State s, const char *why)
+{
+  if (s == state_) return;
+  state_ = s;
+  tools::logger()->info("Tracker: -> {} ({})", state(), why);
+}
+
+void Tracker::to_lost(const char *why)
+{
+  target_.reset();
+  confirm_count_ = 0;
+  set_state(State::Lost, why);
+}
+
+std::optional<Target> Tracker::track(const std::list<Armor> &observations, TimePoint timestamp)
+{
+  // Quan sát rỗng thì không gọi update; state giữ nguyên, predict() ngoại suy từ lần cập nhật cuối.
+  bool updated = false;
+  if (!observations.empty())
+  {
+    const std::vector<Armor> vec(observations.begin(), observations.end());
+    updated = target_.update(vec, timestamp);
   }
 
-  std::optional<Target> Tracker::track(const std::list<Armor> &observations, TimePoint timestamp)
+  // Target có thể tự khởi tạo lại bên trong (gián đoạn dài): coi như bắt đầu xác nhận lại.
+  const bool reinitialized = updated && target_.generation() != last_generation_;
+  last_generation_ = target_.generation();
+
+  const double since_last = std::chrono::duration<double>(timestamp - last_update_time_).count();
+
+  switch (state_)
   {
-    // ---------- Không có observation ----------
-    if (observations.empty())
-    {
-      if (state_ == "tracking")
+    case State::Lost:
+      if (updated)
       {
-        double time_since_last_seen =
-            std::chrono::duration<double>(timestamp - last_update_time_).count();
-        if (time_since_last_seen <= max_lost_time_s_)
+        last_update_time_ = timestamp;
+        confirm_count_ = 1;
+        set_state(confirm_frames_ <= 1 ? State::Tracking : State::Detecting, "target initialized");
+      }
+      break;
+
+    case State::Detecting:
+      if (updated)
+      {
+        last_update_time_ = timestamp;
+        if (reinitialized) confirm_count_ = 1;
+        else if (++confirm_count_ >= confirm_frames_) set_state(State::Tracking, "confirmed");
+      }
+      else
+      {
+        to_lost("lost while detecting");  // chưa xác nhận mà mất thì bỏ, tránh nhận nhầm detection giả
+      }
+      break;
+
+    case State::Tracking:
+    case State::TempLost:
+      if (updated)
+      {
+        last_update_time_ = timestamp;
+        if (reinitialized)
         {
-          return target_; // coasting: bám mù ngắn hạn
+          confirm_count_ = 1;
+          set_state(State::Detecting, "filter re-initialized");
         }
-        tools::logger()->warn("Tracker: tracking -> lost ({:.2f}s)",
-                              time_since_last_seen);
-        state_ = "lost";
-        target_.reset();
+        else
+        {
+          set_state(State::Tracking, "observation accepted");
+        }
       }
-      return std::nullopt;
-    }
-
-    // ---------- Có observation ----------
-    std::vector<Armor> obs_vec(observations.begin(), observations.end());
-    bool updated = target_.update(obs_vec, timestamp);
-
-    if (updated)
-    {
-      if (state_ != "tracking")
-        tools::logger()->info("Tracker: {} -> tracking", state_);
-      state_ = "tracking";
-      last_update_time_ = timestamp;
-      return target_;
-    }
-
-    // Có observation nhưng update thất bại (gate loại hết hoặc chưa init)
-    if (state_ == "tracking")
-    {
-      double time_since_last_seen =
-          std::chrono::duration<double>(timestamp - last_update_time_).count();
-      if (time_since_last_seen <= max_lost_time_s_)
+      else if (since_last > max_lost_time_s_)
       {
-        return target_; // vẫn coasting
+        to_lost("coasting timeout");
       }
-      state_ = "lost";
-      target_.reset();
-      tools::logger()->warn("Tracker: tracking -> lost (gate reject, {:.2f}s)",
-                            time_since_last_seen);
-    }
-    return std::nullopt;
+      else
+      {
+        set_state(State::TempLost, "no valid observation");
+      }
+      break;
   }
-} // namespace auto_aim
+
+  // Target tự reset (filter phân kỳ) thì không còn gì để bám.
+  if ((state_ == State::Tracking || state_ == State::TempLost || state_ == State::Detecting) &&
+      !target_.is_initialized())
+    to_lost("filter reset internally");
+
+  if (state_ == State::Tracking || state_ == State::TempLost) return target_;
+  return std::nullopt;
+}
+}  // namespace auto_aim

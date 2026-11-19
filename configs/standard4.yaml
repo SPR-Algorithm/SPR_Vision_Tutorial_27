@@ -98,24 +98,43 @@ max_pitch_acc: 100
 Q_pitch: [9e6, 0]
 R_pitch: [1]
 
+# Mọi khóa đều có giá trị mặc định trong code, chỉ ghi những gì muốn đổi.
 
-#####-----target EKF parameters-----#####
 target:
-  # R: Nhiễu đo PnP (m^2 cho x,y,z; rad^2 cho yaw)
-  # Số liệu dưới đây là ước lượng ban đầu, bạn sẽ đo lại khi thực nghiệm.
-  R_x: 0.0004    # (2cm)^2
-  R_y: 0.0004    # (2cm)^2
-  R_z: 0.0009    # (3cm)^2 (Trục z/depth thường nhiễu hơn)
-  R_yaw: 0.0001  # (0.01rad)^2 (~0.57 độ)
+  mode: outpost            # plate = Task 1 (tịnh tiến) | outpost = Task 2 (tiền đồn)
+  output_mode: predict   # raw | filter | predict  -> 3 chế độ so sánh của Task 1
 
-  # Q: Cường độ nhiễu gia tốc trắng (m^2/s^3 cho x,y,z; rad^2/s^3 cho yaw)
-  # Dùng để cân bằng giữa việc tin mô hình (Q nhỏ) và tin camera (Q lớn).
+  # ---- nhiễu quan sát (chung) ----
+  fx: 1400.0             # lấy từ camera_matrix (px). BẮT BUỘC đặt đúng
+  sigma_pix: 1.0
+  plate_width: 0.135     # giáp nhỏ (m)
+  depth_scale: 1.0       # hiệu chỉnh sai số chiều sâu sau khi đo
+  sigma_floor: 0.01      # m
+  R_yaw: 0.0225          # rad² (Task 1 bạn từng đo 0.0001, hãy dùng số đo của bạn)
+  use_yaw: true          # false nếu yaw PnP của bạn nhiễu/lật -> chỉ dùng xyz
+  gate_chi2: 9.49        # 4 bậc tự do
+  gate_chi2_3dof: 7.81   # khi use_yaw=false
+  # reset_dt: 0.3        # mặc định 0.3 (plate) / 0.6 (outpost)
+  max_predict_s: 1.0     # >= tầm nhìn xa nhất mà Planner hỏi
+
+  # ---- Task 1: nhiễu gia tốc σ_a² ((m/s²)²) ----
   sa2_x: 2.0
   sa2_y: 2.0
-  sa2_z: 0.5     # Xe thường ít nhảy dọc
-  sa2_yaw: 3.0   # Con quay có thể khởi quay đột ngột
+  sa2_z: 0.5
+  sa2_yaw: 0.5
 
-  # Gate: Ngưỡng Mahalanobis (Chi-square 95%, 4 DOF = 9.49)
-  gate_chi2: 9.49
+  # ---- Task 2: tiền đồn ----
+  r0: 0.275              # m. ĐO LẠI trên thiết bị thật
+  sigma_alpha: 30.0      # rad/s². Nhỏ: mượt nhưng trễ khi dừng/đảo chiều; lớn: bám nhanh nhưng nhiễu
+  q_center: 0.001
+  q_r: 0.001
+  q_z: 0.001
+  outpost_class_id: -1   # >=0: chỉ nhận giáp có class_id của tiền đồn
+  yaw_flip: false        # true nếu yaw của Solver hướng VÀO trong
 
-  #Nếu súng rung lắc dữ dội, hãy vào file YAML giảm sa2_x, sa2_y xuống. Nếu súng quay chậm (lag), tăng sa2_x, sa2_y lên.
+tracker:
+  max_lost_time_s: 0.2   # thời gian bám mù tối đa
+  confirm_frames: 3      # số frame liên tiếp để xác nhận mục tiêu
+
+# task2_real
+fire_enabled: false      # thử nghiệm: tắt bắn

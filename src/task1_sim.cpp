@@ -1,11 +1,13 @@
 #include <chrono>
 #include <exception>
 #include <iostream>
+#include <list>
 #include <memory>
 
 #include "sim_bridge/foxglove_debug.hpp"
 #include "sim_bridge/simulation_config.hpp"
 #include "sim_bridge/simulator.hpp"
+#include "task/auto_aim/debug_utils.hpp"
 #include "task/auto_aim/planner/planner.hpp"
 #include "task/auto_aim/solver.hpp"
 #include "task/auto_aim/tracker.hpp"
@@ -21,23 +23,16 @@ using namespace std::chrono_literals;
 int main(int argc, char *argv[])
 try
 {
-  std::cout << "[DEBUG 1] Loading config..." << std::endl;
   const auto options = sim_bridge::load_sim_options(argc, argv);
   const auto &config_path = options.config;
-  std::cout << "[DEBUG 1.1] Config loaded. Config path: " << config_path << std::endl;
 
-  // 初始化工具类
+  // ---- Khởi tạo công cụ ----
   tools::Exiter exiter;
   std::unique_ptr<tools::Plotter> plotter;
   if (options.plotjuggler_enabled)
-  {
     plotter = std::make_unique<tools::Plotter>(options.plot_host, options.plot_port);
-  }
 
-  // 初始化仿真io类
-  std::cout << "[DEBUG 2] Initializing Simulator..." << std::endl;
   sim_bridge::Simulator simulator(options.shm_directory);
-  std::cout << "[DEBUG 2.1] Simulator initialized." << std::endl;
 
   std::unique_ptr<sim_bridge::FoxgloveDebug> foxglove;
   if (options.foxglove_enabled)
@@ -47,135 +42,149 @@ try
         options.foxglove_rate, options.foxglove_visual_rate);
   }
 
-  // 初始化auto_aim类
-  std::cout << "[DEBUG 3] Initializing YOLO ..." << std::endl;
+  // ---- Khởi tạo pipeline auto_aim ----
   auto_aim::YOLO yolo(config_path, true);
-  std::cout << "[DEBUG 3.1] YOLO initialized!" << std::endl;
-
-  std::cout << "[DEBUG 4] Initializing Solver, Tracker, Planner..." << std::endl;
   auto_aim::Solver solver(config_path);
   auto_aim::Tracker tracker(config_path);
   auto_aim::Planner planner(config_path);
-  std::cout << "[DEBUG 4.1] Solver, Tracker, Planner initialized!" << std::endl;
 
   sim_bridge::SimFrame frame;
   sim_bridge::DebugFrame debug_frame;
 
-  auto start_time = std::chrono::steady_clock::now(); // fixed value, set once
+  const auto start_time = std::chrono::steady_clock::now();
   auto last_plot_time = start_time;
   int frame_count = 0;
 
-  std::cout << "[DEBUG 5] Entering main loop (waiting for frames from Simulator)..." << std::endl;
+  // ---- Heartbeat: cứ 2 s in 1 dòng để biết pipeline đang đứng ở khâu nào ----
+  long n_frames = 0, n_stale = 0, n_armors = 0, n_solved = 0, hb_prev_frames = 0;
+  double last_age_ms = 0.0;
+  auto last_hb = start_time;
+  auto heartbeat = [&]() {
+    const auto t_now = std::chrono::steady_clock::now();
+    if (std::chrono::duration<double>(t_now - last_hb).count() < 2.0) return;
+    last_hb = t_now;
+    const long new_frames = n_frames - hb_prev_frames;
+    hb_prev_frames = n_frames;
+    tools::logger()->info("[hb] frames={} (+{}) stale={} detected={} solved={} last_age_ms={:.1f} tracker={}",
+                          n_frames, new_frames, n_stale, n_armors, n_solved, last_age_ms, tracker.state());
+    if (n_frames == 0)
+      tools::logger()->warn("[hb] NO FRAMES RECEIVED from simulator: check shm_directory ({}), F5, is simulator running?",
+                            options.shm_directory);
+    else if (new_frames == 0)
+      tools::logger()->warn("[hb] NO NEW FRAMES in 2 s: simulator stopped sending (VM too slow? F5?)");
+    else if (n_stale == n_frames)
+      tools::logger()->warn("[hb] ALL frames dropped because too old: age {:.1f} ms > max_frame_age_ms={:.1f}. "
+                            "Increase sim.max_frame_age_ms in YAML, or check clock sync",
+                            last_age_ms, static_cast<double>(options.max_age_ms));
+    else if (n_armors == 0)
+      tools::logger()->warn("[hb] YOLO ran but found no armors: check enemy_color, model, min_confidence");
+    else if (n_solved == 0)
+      tools::logger()->warn("[hb] YOLO found armors but PnP failed: check camera_matrix, R_camera2gimbal");
+  };
+  tools::logger()->info("Entering main loop, waiting for frames (shm: {})", options.shm_directory);
+
   while (!exiter.exit())
   {
+    heartbeat();
 
-    // Read frame with 50ms timeout, skip iteration if none arrives
-    if (!simulator.read(frame, 50ms))
-      continue;
-    std::cout << "[DEBUG 6] Received frame! Sequence: " << frame.sequence << std::endl;
+    // ---- 1. Nhận frame (timeout 50 ms) ----
+    if (!simulator.read(frame, 50ms)) continue;
+    ++n_frames;
 
-    // check duration limit
-    auto now = std::chrono::steady_clock::now(); // new value each loop
-    double elapsed = std::chrono::duration<double>(now - start_time).count();
-    if (options.duration > 0 && elapsed > options.duration)
+    auto now = std::chrono::steady_clock::now();
+    const double elapsed = std::chrono::duration<double>(now - start_time).count();
+    if (options.duration > 0 && elapsed > options.duration) break;
+
+    // Bỏ frame quá cũ: dữ liệu cũ làm sai bù trễ.
+    last_age_ms = sim_bridge::capture_age_ms(frame, now);
+    if (last_age_ms > options.max_age_ms)
     {
-      break;
+      ++n_stale;
+      continue;
     }
 
-    // check frame age
-    auto age_ms = sim_bridge::capture_age_ms(frame, now);
-    if (age_ms > options.max_age_ms)
-      continue;
+    // Gián đoạn từ simulator (reset cảnh...) -> xóa mục tiêu.
+    if (frame.discontinuity) tracker.reset();
 
-    // detection
+    // ---- 2. Detect + PnP ----
     auto armors = yolo.detect(frame.bgr, frame_count++);
-    if (armors.empty())
-    {
-      tools::logger()->warn("Khong thay bang giap nao!");
-      continue;
-    }
-    else
-    {
-      tools::logger()->info("Thay {} bang giap!", armors.size());
-    }
-    std::cout << "[DEBUG 7] YOLO detected" << armors.size() << " armors." << std::endl;
-    if (armors.empty())
-    {
-      continue;
-    }
+    n_armors += static_cast<long>(armors.size());
 
-    // set solver camera calibration and pose
     solver.set_camera_calibration(frame.camera_matrix(), frame.distortion_coeffs());
-    Eigen::Quaterniond q_world_camera = frame.world_camera_rotation();
-    Eigen::Vector3d p_world_camera = frame.world_camera_position();
-    solver.set_world_camera_pose(q_world_camera, p_world_camera);
+    solver.set_world_camera_pose(frame.world_camera_rotation(), frame.world_camera_position());
 
-    // solve each armor
     std::list<auto_aim::Armor> observations;
     for (auto &armor : armors)
-    {
-      if (solver.try_solve(armor))
-      {
-        observations.push_back(armor);
-      }
-    }
-    std::cout << "[DEBUG 8] Solver successfully solved " << observations.size() << " armors." << std::endl;
-    if (observations.empty())
-      continue;
+      if (solver.try_solve(armor)) observations.push_back(armor);
+    n_solved += static_cast<long>(observations.size());
 
-    // track
-    if (frame.discontinuity)
-      tracker.reset();
+    // ---- 3. Tracker: LUÔN gọi mỗi frame, kể cả khi observations rỗng (để coasting hoạt động) ----
     auto target_opt = tracker.track(observations, frame.timestamp);
-    std::cout << "[DEBUG 9] Tracker has target: " << (target_opt.has_value() ? "YES" : "NO") << std::endl;
+
+    // Mất mục tiêu: chỉ đẩy ảnh lên Foxglove để vẫn quan sát được.
     if (!target_opt.has_value())
     {
+      if (foxglove)
+      {
+        debug_frame.timestamp_ns = frame.timestamp_ns;
+        debug_frame.image = frame.bgr.clone();
+        debug_frame.has_target = false;
+        debug_frame.center = frame.p_world_gimbal;
+        debug_frame.measured.clear();
+        debug_frame.predicted.clear();
+        for (const auto &a : observations)
+          if (a.xyz_in_world.allFinite()) debug_frame.measured.push_back(a.xyz_in_world);
+        foxglove->publish(std::move(debug_frame));
+      }
       continue;
     }
-
     auto &target = target_opt.value();
 
-    // build planning context
+    // ---- 4. Planner ----
+    // age_s tính SAU detect/solve/track: gồm cả thời gian xử lý, không chỉ tuổi lúc nhận.
+    now = std::chrono::steady_clock::now();
+    const double age_ms = sim_bridge::capture_age_ms(frame, now);
+
     auto_aim::PlanningContext context;
     context.observation_time = frame.timestamp;
     context.muzzle_world = frame.p_world_gimbal + frame.q_world_gimbal * frame.t_gimbal_muzzle;
-    auto age_s = age_ms / 1000.0;
-    context.prediction_delay_s = age_s + options.delay_s;
+    context.prediction_delay_s = age_ms / 1000.0 + options.delay_s;
 
-    // plan
-    double bullet_speed = options.bullet_speed;
-    auto plan = planner.plan(target, bullet_speed, context);
-    tools::logger()->info("Plan: Yaw={:.3f}, Pitch={:.3f}, Control={}", 
-    plan.yaw, plan.pitch, plan.control);
+    auto plan = planner.plan(target, options.bullet_speed, context);
 
-    // send control
+    // ---- 5. Gửi lệnh. Bám mù (coasting) thì không bắn. ----
     if (options.control && plan.control)
     {
-      bool fire = options.fire_enabled && plan.fire;
+      const bool fire = options.fire_enabled && plan.fire && !tracker.coasting();
       simulator.send(plan.yaw, plan.pitch, fire, plan.distance);
-      tools::logger()->info("Dang gui lenh toi Simulator...");
     }
 
-    // Publish debug data to PlotJuggler
-    double plot_dt = std::chrono::duration<double>(now - last_plot_time).count();
+    // ---- 6. Dữ liệu gỡ lỗi (PlotJuggler) ----
+    const double plot_dt = std::chrono::duration<double>(now - last_plot_time).count();
     if (plot_dt > 1.0 / options.plot_rate)
-    { // rate limiting
+    {
       last_plot_time = now;
       nlohmann::json j;
       j["time"] = std::chrono::duration<double>(now - start_time).count();
       j["timestamp"] = frame.timestamp_ns / 1e9;
+      j["tracker"]["state"] = tracker.state();
+      j["tracker"]["coasting"] = tracker.coasting();
       j["plan"]["yaw"] = plan.yaw;
       j["plan"]["pitch"] = plan.pitch;
       j["plan"]["valid"] = plan.control;
+      j["plan"]["fire"] = plan.fire;
+      j["plan"]["error"] = plan.tracking_error;
+      j["plan"]["fly_time"] = plan.fly_time;
       j["target"]["yaw"] = plan.target_yaw;
       j["target"]["pitch"] = plan.target_pitch;
-      j["gimbal"]["yaw"] = frame.q_world_gimbal.toRotationMatrix().eulerAngles(2, 1, 0)[0];
-      j["gimbal"]["pitch"] = frame.q_world_gimbal.toRotationMatrix().eulerAngles(2, 1, 0)[1];
-      if (plotter)
-        plotter->plot(j);
+      j["gimbal"]["yaw"] = auto_aim::debug::gimbal_yaw(frame.q_world_gimbal);
+      j["gimbal"]["pitch"] = auto_aim::debug::gimbal_pitch(frame.q_world_gimbal);
+      j["frame_age_ms"] = age_ms;
+      auto_aim::debug::fill_json(j, observations, target, plan.aim_xyza, plan.aim_id);
+      if (plotter) plotter->plot(j);
     }
 
-    // Foxglove debug
+    // ---- 7. Foxglove ----
     if (foxglove)
     {
       debug_frame.timestamp_ns = frame.timestamp_ns;
@@ -185,27 +194,16 @@ try
       debug_frame.measured.clear();
       debug_frame.predicted.clear();
 
-      // Collect measured armor positions
       for (const auto &armor : observations)
-      {
-        if (armor.xyz_in_world.allFinite())
-        {
-          debug_frame.measured.push_back(armor.xyz_in_world);
-        }
-      }
+        if (armor.xyz_in_world.allFinite()) debug_frame.measured.push_back(armor.xyz_in_world);
 
-      // Get prediction at impact time
-      double processing_delay_s = context.prediction_delay_s; // capture → execute
-      double flight_time_s = plan.fly_time;                   // muzzle → target
-      double total_lead_s = processing_delay_s + flight_time_s;
-
-      auto impact_time = frame.timestamp + std::chrono::duration_cast<std::chrono::steady_clock::duration>(std::chrono::duration<double>(total_lead_s));
-      auto pred = target.predict(impact_time);
-
-      for (const auto &pa : pred.armors)
-      {
-        debug_frame.predicted.push_back(pa.xyza.head<3>()); // drop yaw
-      }
+      // Dự đoán tại thời điểm đạn tới: trễ xử lý + thời gian bay.
+      const double total_lead_s = context.prediction_delay_s + plan.fly_time;
+      const auto impact_time =
+          frame.timestamp + std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+                                std::chrono::duration<double>(total_lead_s));
+      const auto pred = target.predict(impact_time);
+      for (const auto &pa : pred.armors) debug_frame.predicted.push_back(pa.xyza.head<3>());
 
       nlohmann::json telemetry;
       telemetry["plan"]["yaw"] = plan.yaw;
@@ -215,6 +213,10 @@ try
       telemetry["target"]["pitch"] = plan.target_pitch;
       telemetry["error"]["yaw"] = plan.tracking_error;
       telemetry["frame_age_ms"] = age_ms;
+      telemetry["tracker"] = tracker.state();
+      const auto tel = target.telemetry();
+      telemetry["est"]["nis"] = tel.nis;
+      telemetry["est"]["vyaw"] = tel.vyaw;
       debug_frame.telemetry = telemetry;
 
       foxglove->publish(std::move(debug_frame));

@@ -23,28 +23,13 @@ distort_coeffs: [0, 0, 0, 0, 0]
 
 sim:
   shm_directory: /tmp
-  max_frame_age_ms: 100
+  max_frame_age_ms: 1000 #100
   control: true
   fire: true
   bullet_speed: 24.9
   execution_delay_ms: 0
   duration_s: 0
 
-target:
-  # R — nhiễu đo PnP (đo từ log, xem analyze_r.py)
-  R_x: 0.0004      # (2cm)²
-  R_y: 0.0004
-  R_z: 0.0009      # (3cm)² — depth kém chính xác hơn
-  R_yaw: 0.0001    # (0.01rad)² ≈ (0.57°)²
-
-  # Q — cường độ nhiễu gia tốc trắng
-  sa2_x: 2.0       # m²/s³
-  sa2_y: 2.0
-  sa2_z: 0.5
-  sa2_yaw: 3.0     # rad²/s³ — con quay có thể khởi quay
-
-  # Gate Mahalanobis — chi-square 95%, 4 DOF = 9.49
-  gate_chi2: 9.49
   
 planner:
   yaw_offset: 0.0 # degrees
@@ -66,13 +51,54 @@ shooter:
   fire_interval_ms: 80.0
   settle_time_ms: 20.0
 foxglove:
-  enabled: true
+  enabled: true 
   host: 127.0.0.1
   port: 8765
   rate_hz: 50
   visual_rate_hz: 10
 plotjuggler:
-  enabled: true
+  enabled: false
   host: 127.0.0.1
   port: 9870
   rate_hz: 100
+
+# Mọi khóa đều có giá trị mặc định trong code, chỉ ghi những gì muốn đổi.
+
+target:
+  mode: outpost            # plate = Task 1 (tịnh tiến) | outpost = Task 2 (tiền đồn)
+  output_mode: predict   # raw | filter | predict  -> 3 chế độ so sánh của Task 1
+
+  # ---- nhiễu quan sát (chung) ----
+  fx: 1400.0             # lấy từ camera_matrix (px). BẮT BUỘC đặt đúng
+  sigma_pix: 1.0
+  plate_width: 0.135     # giáp nhỏ (m)
+  depth_scale: 1.0       # hiệu chỉnh sai số chiều sâu sau khi đo
+  sigma_floor: 0.01      # m
+  R_yaw: 0.0225          # rad² (Task 1 bạn từng đo 0.0001, hãy dùng số đo của bạn)
+  use_yaw: true          # false nếu yaw PnP của bạn nhiễu/lật -> chỉ dùng xyz
+  gate_chi2: 9.49        # 4 bậc tự do
+  gate_chi2_3dof: 7.81   # khi use_yaw=false
+  # reset_dt: 0.3        # mặc định 0.3 (plate) / 0.6 (outpost)
+  max_predict_s: 1.0     # >= tầm nhìn xa nhất mà Planner hỏi
+
+  # ---- Task 1: nhiễu gia tốc σ_a² ((m/s²)²) ----
+  sa2_x: 2.0
+  sa2_y: 2.0
+  sa2_z: 0.5
+  sa2_yaw: 0.5
+
+  # ---- Task 2: tiền đồn ----
+  r0: 0.275              # m. ĐO LẠI trên thiết bị thật
+  sigma_alpha: 30.0      # rad/s². Nhỏ: mượt nhưng trễ khi dừng/đảo chiều; lớn: bám nhanh nhưng nhiễu
+  q_center: 0.001
+  q_r: 0.001
+  q_z: 0.001
+  outpost_class_id: -1   # >=0: chỉ nhận giáp có class_id của tiền đồn
+  yaw_flip: false        # true nếu yaw của Solver hướng VÀO trong
+
+tracker:
+  max_lost_time_s: 0.2   # thời gian bám mù tối đa
+  confirm_frames: 3      # số frame liên tiếp để xác nhận mục tiêu
+
+# task2_real
+fire_enabled: false      # thử nghiệm: tắt bắn
