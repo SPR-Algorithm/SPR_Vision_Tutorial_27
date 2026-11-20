@@ -1,14 +1,33 @@
 # Bevy Talos v2, RGB8 1440x1080. Runtime CameraInfo overrides these intrinsics.
-enemy_color: blue
+enemy_color: red
 min_detect_count: 3
 max_temp_lost_count: 15
 outpost_max_temp_lost_count: 75
 only_outpost: false
+
 # TODO(学生): 在此添加自己的滤波参数，并在 Target/Tracker 中读取。
+target:
+  is_outpost: false                        # true 强制前哨站模型；false 按观测名自动判断
+  q_trans: 1.0                             # 速度随机游走 PSD (m/s)^2/s
+  R_trans_diag_: [0.0009, 0.0009, 0.0025]  # R 对角：0.03^2, 0.03^2, 0.05^2
+  P0_pos_var_:  [0.0025, 0.0025, 0.0025]   # 初始位置方差 0.05^2
+  P0_vel_var_:  1.0                        # 初始速度方差
+  #max_dt: 0.5                              # 帧间隔超过此值则重建
+  max_dt: 10000.0
+  max_horizon: 1.0                         # 预测最远时刻
+  max_lost: 50000                             # 连续丢帧数上限（Tracker 用）
+  #前哨站
+  q_alpha: 30.0                            # 角加速度 PSD rad^2/s^3
+  r_yaw: 0.08                              # 朝向观测噪声 rad
+  radius: 0.275                            # 板到旋转轴距离 m（Ø550）
+  plate_heights: [-0.036, 0.0, 0.036]         # 三块板高度差 m
+  plate_angles_deg: [0.0, 120.0, 240.0]    # 三块板方位角
+  center_z_prior: 1.146                   # 初始化选槽用的安装高度 m
 
 yolo_name: yolov5
 yolov5_model_path: assets/yolov5.xml
-device: GPU
+#device: GPU
+device: CPU
 threshold: 100
 min_confidence: 0.45
 use_traditional: false

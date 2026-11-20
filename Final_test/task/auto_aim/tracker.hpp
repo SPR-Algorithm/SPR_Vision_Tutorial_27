@@ -4,6 +4,7 @@
 #include <list>
 #include <optional>
 #include <string>
+#include <vector>
 
 #include "armor.hpp"
 #include "target.hpp"
@@ -23,9 +24,25 @@ public:
   std::optional<Target> track(const std::list<Armor> & observations, TimePoint timestamp);
 
 private:
+  void select(const std::list<Armor> & observations, std::vector<Armor> & selected) const;
+
   Target target_;
   std::string state_ = "lost";
 
+  bool only_outpost_ = false;
+  int min_detect_count_ = 3;
+  int max_lost_count_ = 15;          // 普通目标
+  int outpost_max_lost_count_ = 7500;  // 前哨站
+  // double max_coast_s_ = 0.30;        // 无观测仍输出的最长时间
+  // double reset_gap_s_ = 1.00;        // 帧间隔过大视为时间断裂
+  double max_coast_s_ = 10000.00;
+  double reset_gap_s_ = 10000.00;
+
+  int detect_count_ = 0;  // 连续有观测的帧数
+  int lost_count_ = 0;    // 连续无观测的帧数
+  TimePoint last_time_{};  // 上一帧时刻（判断时间断裂）
+  TimePoint last_seen_{};  // 上次有观测的时刻（判断目标新鲜度）
+  
   // TODO(学生): 补充目标管理所需的数据。
 };
 }  // namespace auto_aim

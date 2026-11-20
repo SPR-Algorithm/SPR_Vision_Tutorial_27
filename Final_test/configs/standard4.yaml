@@ -1,13 +1,16 @@
 enemy_color: "red"
 #enemy_color: "blue"
 
+# com_port: "/dev/ttyUSB0"
+# baud_rate: 1000000   
+
 #####-----神经网络参数-----#####
 yolo_name: yolov5
 classify_model: assets/tiny_resnet.onnx
 yolo11_model_path: assets/yolo11.xml
 yolov8_model_path: assets/yolov8.xml
 yolov5_model_path: assets/yolov5.xml
-device: GPU
+device: CPU
 min_confidence: 0.8
 use_traditional: false
 
@@ -30,9 +33,10 @@ yaw_offset: 0.5 # degree -2.5
 pitch_offset: -1.5 # degree 2
 
 camera_name: "hikrobot"
-exposure_ms: 2
+exposure_ms: 5
 gain: 16.0
 vid_pid: "2bdf:0001"
+flip_code: 2
 
 #  1  0  0
 #  0  1  0
@@ -74,7 +78,7 @@ t_camera2gimbal:
   [0.02663681156986614, -0.00018454730148609257, 0.10511518672308437]
 
 #####-----gimbal参数-----#####
-com_port: "/dev/gimbal"
+com_port: "/dev/ttyUSB0"
 
 #####-----buff_detector参数-----#####
 model: "assets/buffer-0624.xml"
@@ -93,3 +97,20 @@ R_yaw: [1]
 max_pitch_acc: 100
 Q_pitch: [9e6, 0]
 R_pitch: [1]
+
+target:
+  is_outpost: false                        # true 强制前哨站模型；false 按观测名自动判断
+  q_trans: 1.0                             # 速度随机游走 PSD (m/s)^2/s
+  R_trans_diag_: [0.0009, 0.0009, 0.0025]  # R 对角：0.03^2, 0.03^2, 0.05^2
+  P0_pos_var_:  [0.0025, 0.0025, 0.0025]   # 初始位置方差 0.05^2
+  P0_vel_var_:  1.0                        # 初始速度方差
+  max_dt: 0.5                              # 帧间隔超过此值则重建
+  max_horizon: 1.0                         # 预测最远时刻
+  max_lost: 5                              # 连续丢帧数上限（Tracker 用）
+  #前哨站
+  q_alpha: 30.0                            # 角加速度 PSD rad^2/s^3
+  r_yaw: 0.08                              # 朝向观测噪声 rad
+  radius: 0.275                            # 板到旋转轴距离 m（Ø550）
+  plate_heights: [-0.102, 0.0, 0.102]         # 三块板高度差 m
+  plate_angles_deg: [0.0, 120.0, 240.0]    # 三块板方位角
+  center_z_prior: 1.216                   # 初始化选槽用的安装高度 m

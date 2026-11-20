@@ -24,7 +24,8 @@ class YOLO
 public:
   YOLO(const std::string & config_path, bool debug = true);
 
-  std::list<Armor> detect(const cv::Mat & img, int frame_count = -1);
+  //std::list<Armor> detect(const cv::Mat & img, int frame_count = -1);
+  std::list<Armor> detect(const cv::Mat & img, int frame_count); 
 
   std::list<Armor> postprocess(
     double scale, cv::Mat & output, const cv::Mat & bgr_img, int frame_count);
