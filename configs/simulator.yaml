@@ -4,7 +4,29 @@ min_detect_count: 3
 max_temp_lost_count: 15
 outpost_max_temp_lost_count: 75
 only_outpost: false
-# TODO(学生): 在此添加自己的滤波参数，并在 Target/Tracker 中读取。
+
+# —— 题1 卡尔曼滤波参数（Target 构造函数里读取）——
+# 这些是"起步值"，真正调试时要根据实际跟踪效果去调。
+filter:
+  process_noise: 10.0    # 过程噪声 q：加速度噪声方差 (m²/s⁴)。越大，滤波器越"相信目标在乱动"，
+                         # 越能快速跟上突变，但估计会越抖。
+  observe_noise: 0.001   # 观测噪声 r：PnP 位置测量方差 (m²)。越大，滤波器越"不信观测"，
+                         # 输出越平滑，但越滞后。
+  init_pos_var: 0.01     # 初始位置协方差 (m²)。第一次建目标时对位置的不确定度。
+  init_vel_var: 1.0      # 初始速度协方差 (m²/s²)。第一次建目标时对速度的不确定度。
+
+# —— 题2 前哨站 EKF 参数（OutpostEKF 构造函数里读取）——
+# ⚠️ radius / plate_height 是占位值，请从 img/outpost_structure.png（机械图纸）核对后替换。
+outpost:
+  radius: 0.4              # 装甲板中心到旋转轴的水平距离 (m)
+  plate_height: [0.1, -0.05, -0.2]   # 三块板相对旋转中心的高度 (m)，三块板高度不同
+  process_noise_ang_acc: 0.1   # 角加速度过程噪声 (rad²/s⁴)，越大越"相信角速度会乱变"
+  observe_noise: 0.001         # PnP 位置观测噪声 (m²)
+  init_center_var: 0.01        # 初始中心位置协方差 (m²)
+  init_angle_var: 1.0          # 初始相位协方差 (rad²)
+  init_angvel_var: 1.0         # 初始角速度协方差 (rad²/s²)
+  init_angvel: 0.0             # 初始角速度先验 (rad/s)，0 = 未知，让 EKF 自己估计
+  max_assoc_distance: 0.5      # 关联门限 (m)：观测离三块板预测位置的水平距离都超过它，判误检丢弃
 
 yolo_name: yolov5
 yolov5_model_path: assets/yolov5.xml

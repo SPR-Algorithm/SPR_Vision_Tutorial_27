@@ -1,0 +1,85 @@
+# ============================================================================
+# 题2 前哨站 EKF 专用配置
+# 用法：模拟器里按 Shift+C 切到前哨站旋转场景（或 DAEDALUS_TALOS_OUTPOST_TEST=1 启动），
+#       然后运行：./build/task1_sim --config configs/outpost.yaml
+# 与 simulator.yaml 的区别只有：only_outpost 设为 true，走 OutpostEKF 逻辑。
+# ============================================================================
+enemy_color: blue
+min_detect_count: 3
+max_temp_lost_count: 15
+outpost_max_temp_lost_count: 75
+only_outpost: true
+
+# —— 题1 参数（本场景不用，保留以免 Target 读不到）——
+filter:
+  process_noise: 10.0
+  observe_noise: 0.001
+  init_pos_var: 0.01
+  init_vel_var: 1.0
+
+# —— 题2 前哨站 EKF 参数 ——
+# ⚠️ radius / plate_height 是占位值，请从 img/outpost_structure.png（机械图纸）核对后替换。
+outpost:
+  radius: 0.4              # 装甲板中心到旋转轴的水平距离 (m)
+  plate_height: [0.1, -0.05, -0.2]   # 三块板相对旋转中心的高度 (m)
+  process_noise_ang_acc: 0.1   # 角加速度过程噪声 (rad²/s⁴)
+  observe_noise: 0.001         # PnP 位置观测噪声 (m²)
+  init_center_var: 0.01        # 初始中心位置协方差 (m²)
+  init_angle_var: 1.0          # 初始相位协方差 (rad²)
+  init_angvel_var: 1.0         # 初始角速度协方差 (rad²/s²)
+  init_angvel: 0.0             # 初始角速度先验 (rad/s)
+  max_assoc_distance: 0.5      # 关联门限 (m)
+
+yolo_name: yolov5
+yolov5_model_path: assets/yolov5.xml
+device: GPU
+threshold: 100
+min_confidence: 0.45
+use_traditional: false
+use_roi: false
+roi: { x: 0, y: 0, width: -1, height: -1 }
+
+R_gimbal2imubody: [1, 0, 0, 0, 1, 0, 0, 0, 1]
+R_camera2gimbal: [0, 0, 1, -1, 0, 0, 0, -1, 0]
+t_camera2gimbal: [0, 0, 0]
+camera_matrix: [1303.68, 0, 720, 0, 1303.68, 540, 0, 0, 1]
+distort_coeffs: [0, 0, 0, 0, 0]
+
+sim:
+  shm_directory: /tmp
+  max_frame_age_ms: 100
+  control: true
+  fire: false
+  bullet_speed: 24.9
+  execution_delay_ms: 0
+  duration_s: 0
+planner:
+  yaw_offset: 0.0 # degrees
+  pitch_offset: 0.0
+  max_yaw_acc: 100.0 # rad/s^2
+  max_pitch_acc: 50.0
+  Q_yaw: [9e6, 0]
+  R_yaw: [1]
+  Q_pitch: [9e6, 0]
+  R_pitch: [1]
+  max_iter: 100
+  solver_tolerance: 0.0001
+  fire_thresh: 0.35 # MPC angular tracking error, radians
+  visibility_limit_deg: 45.0
+shooter:
+  yaw_tolerance_deg: 0.8
+  pitch_tolerance_deg: 0.6
+  visibility_angle_deg: 45.0
+  fire_interval_ms: 80.0
+  settle_time_ms: 20.0
+foxglove:
+  enabled: true
+  host: 127.0.0.1
+  port: 8765
+  rate_hz: 50
+  visual_rate_hz: 10
+plotjuggler:
+  enabled: true
+  host: 127.0.0.1
+  port: 9870
+  rate_hz: 100

@@ -93,3 +93,13 @@ R_yaw: [1]
 max_pitch_acc: 100
 Q_pitch: [9e6, 0]
 R_pitch: [1]
+
+#####-----实机题1 卡尔曼滤波参数（Target 读取，与仿真 simulator.yaml 一致）-----#####
+filter:
+  process_noise: 10.0    # 过程噪声 q（m²/s⁴）：越大越相信运动模型、越抖
+  observe_noise: 0.001   # 观测噪声 r（m²）：越大越平滑、越滞后
+  init_pos_var: 0.01     # 初始位置协方差（m²）
+  init_vel_var: 1.0      # 初始速度协方差（m²/s²）
+
+# 兜底弹速（m/s）：真实弹速由电控串口下发；电控未下发时用这个值兜底，防止无法规划。
+bullet_speed: 24.9
