@@ -29,5 +29,15 @@ add_subdirectory(tools)
 add_executable(main main.cpp)
 add_executable(example io/example.cpp)
 
+add_custom_command(TARGET main POST_BUILD
+COMMAND ${CMAKE_COMMAND} -E copy_directory
+${CMAKE_CURRENT_SOURCE_DIR}/configs
+$<TARGET_FILE_DIR:main>/configs
+)
+add_custom_command(TARGET main POST_BUILD
+COMMAND ${CMAKE_COMMAND} -E copy_directory
+${CMAKE_CURRENT_SOURCE_DIR}/assets
+$<TARGET_FILE_DIR:main>/assets
+)
 target_link_libraries(main ${OpenCV_LIBS} fmt::fmt yaml-cpp tools io auto_aim)
 target_link_libraries(example ${OpenCV_LIBS} tools io)
