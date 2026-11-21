@@ -1,0 +1,45 @@
+{
+  "paths": [
+    {
+      "enabled": true,
+      "color": "#4E79A7",
+      "label": "target.yaw",
+      "lineSize": 2,
+      "showLine": true,
+      "value": "/auto_aim/metrics.target.yaw_unwrapped_deg",
+      "timestampMethod": "receiveTime"
+    },
+    {
+      "enabled": true,
+      "color": "#F28E2B",
+      "label": "gimbal.yaw",
+      "lineSize": 2,
+      "showLine": true,
+      "value": "/auto_aim/metrics.gimbal.yaw_unwrapped_deg",
+      "timestampMethod": "receiveTime"
+    },
+    {
+      "enabled": true,
+      "color": "#59A14F",
+      "label": "plan.yaw",
+      "lineSize": 2,
+      "showLine": true,
+      "value": "/auto_aim/metrics.plan.yaw_unwrapped_deg",
+      "timestampMethod": "receiveTime"
+    }
+  ],
+  "showLegend": true,
+  "legendDisplay": "top",
+  "showPlotValuesInLegend": true,
+  "showXAxisLabels": true,
+  "showYAxisLabels": true,
+  "isSynced": true,
+  "xAxisVal": "timestamp",
+  "xAxisLabel": "Time (s)",
+  "timeWindowMode": "sliding",
+  "playbackBarPosition": "right",
+  "yAxisLabel": "Angle (deg)",
+  "followingViewWidth": 20,
+  "xAxisDisplayMethod": "relative",
+  "showYAxisGridLines": true
+}

@@ -1,0 +1,36 @@
+{
+  "paths": [
+    {
+      "enabled": true,
+      "color": "#E15759",
+      "label": "error.yaw",
+      "lineSize": 2,
+      "showLine": true,
+      "value": "/auto_aim/metrics.error.yaw_deg",
+      "timestampMethod": "receiveTime"
+    },
+    {
+      "enabled": true,
+      "color": "#B07AA1",
+      "label": "error.pitch",
+      "lineSize": 2,
+      "showLine": true,
+      "value": "/auto_aim/metrics.error.pitch_deg",
+      "timestampMethod": "receiveTime"
+    }
+  ],
+  "showLegend": true,
+  "legendDisplay": "top",
+  "showPlotValuesInLegend": true,
+  "showXAxisLabels": true,
+  "showYAxisLabels": true,
+  "isSynced": true,
+  "xAxisVal": "timestamp",
+  "xAxisLabel": "Time (s)",
+  "timeWindowMode": "sliding",
+  "playbackBarPosition": "right",
+  "yAxisLabel": "Angle (deg)",
+  "followingViewWidth": 20,
+  "xAxisDisplayMethod": "relative",
+  "showYAxisGridLines": true
+}
