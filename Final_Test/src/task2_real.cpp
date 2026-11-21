@@ -63,6 +63,7 @@ int main(int argc, char *argv[]) {
   Eigen::Quaterniond q;
   std::chrono::steady_clock::time_point t;
   Eigen::Matrix3d camera_matrix=vector_to_matrix(tools::read<std::vector<double>>(yalm,"camera_matrix",{1803.85723, 0., 698.29467, 0., 1800.27952, 579.92966, 0., 0., 1.}),3,3);
+  Eigen::Vector3d t_gimbal_muzzle=vector_to_v(tools::read<std::vector<double>>(yalm,"t_gimbal_muzzle",{0,0,0}));
   Eigen::Vector<double,5>distortion=vector_to_v(tools::read<std::vector<double>>(yalm,"distort_coeffs",{-0.086982, 0.202748, -0.000254, 0.000123, 0.000000}));
   double delay_s=tools::read<double>(yalm,"predict_time",0.120);
   solver.set_camera_calibration(camera_matrix,distortion);
@@ -84,9 +85,11 @@ int main(int argc, char *argv[]) {
     auto &target = target_opt.value();
     auto_aim::PlanningContext ctx;
     ctx.observation_time=t;
-    ctx.prediction_delay_s=delay_s;
-    ctx.muzzle_world=Eigen::Vector3d::Zero();
-    auto plan=planner.plan(target,25.0,ctx);
+    ctx.prediction_delay_s=delay_s+std::chrono::duration<double>(t.time_since_epoch()).count();
+    ctx.muzzle_world=q*t_gimbal_muzzle;
+    double bullet_speed=gimbal.state().bullet_speed;
+    if(bullet_speed<1.0){bullet_speed=25.0;}
+    auto plan=planner.plan(target,bullet_speed,ctx);
     bool is_control=gimbal.mode()!=io::GimbalMode::IDLE?true:false;
     gimbal.send(is_control?plan.control:false,is_fire?plan.fire:false,plan.yaw,plan.yaw_vel,plan.yaw_acc,plan.pitch,plan.pitch_vel,plan.pitch_acc);
     if (plotter)

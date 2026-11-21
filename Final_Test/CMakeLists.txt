@@ -9,7 +9,7 @@ if(NOT CMAKE_BUILD_TYPE)
 endif()
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-option(BUILD_HARDWARE "Build HikRobot and serial hardware drivers" OFF)
+option(BUILD_HARDWARE "Build HikRobot and serial hardware drivers" ON)
 find_package(OpenCV REQUIRED COMPONENTS core imgproc imgcodecs calib3d dnn highgui videoio)
 find_package(Eigen3 3.4 REQUIRED NO_MODULE)
 find_package(fmt REQUIRED)

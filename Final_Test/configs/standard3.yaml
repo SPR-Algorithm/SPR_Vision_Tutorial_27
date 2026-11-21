@@ -90,3 +90,4 @@ foxglove:
   host: 127.0.0.1
   port: 9870
   rate_hz: 100
+t_gimbal_muzzle: [0,0,0]
