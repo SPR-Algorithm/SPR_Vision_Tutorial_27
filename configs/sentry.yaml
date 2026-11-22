@@ -4,7 +4,7 @@ enemy_color: "blue"
 #####-----神经网络参数-----#####
 yolo_name: yolov5
 yolov5_model_path: assets/yolov5.xml
-device: GPU
+device: CPU
 min_confidence: 0.8
 use_traditional: true
 

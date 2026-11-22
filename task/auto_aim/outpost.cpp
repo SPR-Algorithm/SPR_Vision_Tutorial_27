@@ -19,6 +19,14 @@ double to_seconds(TimePoint a, TimePoint b)
 constexpr double kPi = 3.14159265358979323846;
 // 三块板周向间隔 120°，换算成弧度。
 constexpr double kPlateSpacing = 2.0 * kPi / 3.0;
+
+// 把角度归一化到 [-π, π]。
+double wrap_angle(double a)
+{
+  a = std::fmod(a + kPi, 2.0 * kPi);
+  if (a < 0.0) a += 2.0 * kPi;
+  return a - kPi;
+}
 }  // namespace
 
 OutpostEKF::OutpostEKF(const std::string & config_path)
@@ -78,38 +86,65 @@ int OutpostEKF::associate(const Armor & obs) const
 
 void OutpostEKF::update(const std::vector<Armor> & observations, TimePoint timestamp)
 {
-  // ---- 找第一个"位置和朝向都有效"的观测（初始化用）----
-  const Armor * first_valid = nullptr;
+  // ---- 收集所有"位置和朝向都有效"的观测 ----
+  std::vector<const Armor *> valid;
   for (const auto & obs : observations) {
-    if (obs.xyz_in_world.allFinite() && obs.ypr_in_world.allFinite()) {
-      first_valid = &obs;
-      break;
-    }
+    if (obs.xyz_in_world.allFinite() && obs.ypr_in_world.allFinite()) valid.push_back(&obs);
   }
 
   // ============================================================
-  // 情况1：还没初始化 —— 用第一次观测直接建立状态
+  // 情况1：还没初始化 —— 用同一帧的两块板反推板编号，再建立状态
   // ============================================================
   if (!initialized_) {
-    if (first_valid == nullptr) return;
+    // 单块板无法确定它是三块里的哪一块（中心高度 cz 未知，三块板高度又不同）。
+    // 需要同一帧里同时看到两块高度不同的板，用「高度差 + 方位差」反推出板编号，
+    // 才能把 cz 和相位 θ 对齐，消除 z 方向（pitch）的系统偏差。
+    if (valid.size() < 2) return;
 
-    // 装甲板朝向 yaw = 板面朝外的方位角 φ（Solver 解出的 ypr_in_world[0]）。
-    // 中心在板的后方距离 r 处，所以：
-    //   center = 板位置 - r * [cos(yaw), sin(yaw)]
-    const double yaw = first_valid->ypr_in_world[0];
-    const double cx = first_valid->xyz_in_world.x() - radius_ * std::cos(yaw);
-    const double cy = first_valid->xyz_in_world.y() - radius_ * std::sin(yaw);
+    const Armor * a = valid[0];
+    const Armor * b = nullptr;
+    for (std::size_t i = 1; i < valid.size(); ++i) {
+      if (std::abs(valid[i]->xyz_in_world.z() - a->xyz_in_world.z()) > 0.03) {
+        b = valid[i];
+        break;
+      }
+    }
+    if (b == nullptr) return; // 这一帧只看到同一块板，继续等
 
-    // 约定"第一次看到的那块板就是第 0 块"，所以它的高度取 height_[0]。
-    // ⚠️ 已知局限：单帧只能看到 1~2 块板，这里没法知道"第一次看到的那块"到底是三块里
-    //    的哪一块（因为中心高度 cz 也未知）。如果它实际的高度不是 height_[0]，那么估计出的
-    //    cz 会偏一个常数，z 方向的预测（影响 pitch 瞄准）会偏 ≤ 三块板的高度差。
-    //    这个偏差不影响水平面的旋转跟踪（θ/ω/cx/cy 都由 x,y 决定，是对的）。
-    //    若要彻底消除：初始化时多看一块板，用两块板的高度差反推出"高度相位偏移"。
-    const double cz = first_valid->xyz_in_world.z() - height_[0];
+    // 高度差 dz 与中心高度无关，方位差 dphi 是相邻板的 ±120°。
+    const double dz = b->xyz_in_world.z() - a->xyz_in_world.z();
+    const double dphi = wrap_angle(b->ypr_in_world[0] - a->ypr_in_world[0]);
+    const int sign = (dphi > 0.0) ? 1 : -1; // b 在 a 的 +120° 方向
+
+    // 枚举 a 是第几号板（0/1/2），b 的编号由 sign 决定，看谁的高度差最匹配观测。
+    // 等间距高度下相邻两板的高度差相同，会有两个候选都匹配（歧义），
+    // 所以只有当最优明显优于次优（即看到"最高+最低"这对无歧义组合）时才接受，否则继续等。
+    int best_k = 0;
+    double best_err = 1e9;
+    double second_err = 1e9;
+    for (int k = 0; k < kPlateCount; ++k) {
+      const int k2 = (k + sign + kPlateCount) % kPlateCount;
+      const double err = std::abs((height_[k2] - height_[k]) - dz);
+      if (err < best_err) {
+        second_err = best_err;
+        best_err = err;
+        best_k = k;
+      } else if (err < second_err) {
+        second_err = err;
+      }
+    }
+    if (second_err - best_err < 0.02) return; // 有歧义，等下一帧看更清楚
+
+    // 用正确的板编号 best_k 初始化。
+    // 装甲板朝向 yaw = 板面朝外的方位角 φ，且 φ = θ + best_k·120°，中心在板后方距离 r 处。
+    const double yaw = a->ypr_in_world[0];
+    const double cx = a->xyz_in_world.x() - radius_ * std::cos(yaw);
+    const double cy = a->xyz_in_world.y() - radius_ * std::sin(yaw);
+    const double cz = a->xyz_in_world.z() - height_[best_k];
+    const double theta = wrap_angle(yaw - best_k * kPlateSpacing);
 
     Eigen::Vector<double, kDim> x0;
-    x0 << cx, cy, cz, yaw, init_omega_;
+    x0 << cx, cy, cz, theta, init_omega_;
 
     // 初始协方差 P0：对角矩阵，中心/相位/角速度各自给一个"不确定度"。
     Eigen::Matrix<double, kDim, kDim> P0 = Eigen::Matrix<double, kDim, kDim>::Zero();

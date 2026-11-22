@@ -20,8 +20,8 @@ filter:
 # —— 题2 前哨站 EKF 参数 ——
 # ⚠️ radius / plate_height 是占位值，请从 img/outpost_structure.png（机械图纸）核对后替换。
 outpost:
-  radius: 0.4              # 装甲板中心到旋转轴的水平距离 (m)
-  plate_height: [0.1, -0.05, -0.2]   # 三块板相对旋转中心的高度 (m)
+  radius: 0.275              # 装甲板中心到旋转轴的水平距离 (m)
+  plate_height: [0.102, 0, -0.102]   # 三块板相对旋转中心的高度 (m)
   process_noise_ang_acc: 0.1   # 角加速度过程噪声 (rad²/s⁴)
   observe_noise: 0.001         # PnP 位置观测噪声 (m²)
   init_center_var: 0.01        # 初始中心位置协方差 (m²)
@@ -32,7 +32,7 @@ outpost:
 
 yolo_name: yolov5
 yolov5_model_path: assets/yolov5.xml
-device: GPU
+device: CPU
 threshold: 100
 min_confidence: 0.45
 use_traditional: false

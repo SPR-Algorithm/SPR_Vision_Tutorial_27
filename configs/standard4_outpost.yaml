@@ -1,0 +1,118 @@
+enemy_color: "red"
+#enemy_color: "blue"
+
+#####-----神经网络参数-----#####
+yolo_name: yolov5
+classify_model: assets/tiny_resnet.onnx
+yolo11_model_path: assets/yolo11.xml
+yolov8_model_path: assets/yolov8.xml
+yolov5_model_path: assets/yolov5.xml
+device: CPU
+min_confidence: 0.8
+use_traditional: false
+
+#####-----ROI-----#####
+roi:
+  x: 420
+  y: 50
+  width: 600
+  height: 600
+
+use_roi: false
+
+#####-----tracker参数-----#####
+min_detect_count: 5
+max_temp_lost_count: 15
+outpost_max_temp_lost_count: 75
+
+#####-----aimer参数-----#####
+yaw_offset: 0.5 # degree -2.5
+pitch_offset: -1.5 # degree 2
+
+camera_name: "hikrobot"
+exposure_ms: 2
+gain: 16.0
+vid_pid: "2bdf:0001"
+
+#  1  0  0
+#  0  1  0
+#  0  0  1
+
+R_gimbal2imubody: [0, 1, 0, -1, 0, 0, 0, 0, -1]
+
+# # 重投影误差: 0.214px
+camera_matrix:
+  [
+    2348.28807,
+    0.00000,
+    715.8871,
+    0.000000,
+    2343.20121,
+    549.08769,
+    0.00000,
+    0.00000,
+    1.00000,
+  ]
+distort_coeffs: [-0.113753, 0.476220, -0.000367, 0.000390, 0.000000]
+
+# 相机同理想情况的偏角: yaw0.50 pitch0.89 roll-4.09 degree
+# 标定板到世界坐标系原点的水平距离: 1.84 m
+# 标定板同竖直摆放时的偏角: yaw21.15 pitch5.80 roll-95.22 degree
+R_camera2gimbal:
+  [
+    -0.0097593608923142363,
+    0.014906909346876499,
+    0.9998412568646573,
+    -0.99740747610409053,
+    -0.07143632359391644,
+    -0.0086705411049835795,
+    0.0712957325976913,
+    -0.99733376345389468,
+    0.015565435690953719,
+  ]
+t_camera2gimbal:
+  [0.02663681156986614, -0.00018454730148609257, 0.10511518672308437]
+
+#####-----gimbal参数-----#####
+com_port: "/dev/gimbal"
+
+#####-----buff_detector参数-----#####
+model: "assets/buffer-0624.xml"
+
+#####-----buff_aimer参数-----#####
+fire_gap_time: 0.520 # s
+predict_time: 0.100 # s
+
+#####-----planner-----#####
+fire_thresh: 0.0035
+
+max_yaw_acc: 50
+Q_yaw: [9e6, 0]
+R_yaw: [1]
+
+max_pitch_acc: 100
+Q_pitch: [9e6, 0]
+R_pitch: [1]
+
+#####-----实机题1 卡尔曼滤波参数（Target 读取，与仿真 simulator.yaml 一致）-----#####
+filter:
+  process_noise: 10.0    # 过程噪声 q（m²/s⁴）：越大越相信运动模型、越抖
+  observe_noise: 0.001   # 观测噪声 r（m²）：越大越平滑、越滞后
+  init_pos_var: 0.01     # 初始位置协方差（m²）
+  init_vel_var: 1.0      # 初始速度协方差（m²/s²）
+
+# 兜底弹速（m/s）：真实弹速由电控串口下发；电控未下发时用这个值兜底，防止无法规划。
+bullet_speed: 24.9
+
+# ===== 题2 前哨站（实机）=====
+only_outpost: true
+outpost:
+  radius: 0.275              # 板中心到旋转轴水平距离 (m)，275mm
+  plate_height: [0.102, 0, -0.102]   # 三块板相对中心高度 (m)，离地 1318/1216/1114
+  process_noise_ang_acc: 0.1
+  observe_noise: 0.001
+  init_center_var: 0.01
+  init_angle_var: 1.0
+  init_angvel_var: 1.0
+  init_angvel: 0.0
+  max_assoc_distance: 0.5

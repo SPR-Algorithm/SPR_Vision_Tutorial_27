@@ -10,6 +10,7 @@
 #include "io/camera.hpp"
 #include "io/gimbal/gimbal.hpp"
 #include "task/auto_aim/planner/planner.hpp"
+#include "task/auto_aim/shooter.hpp"
 #include "task/auto_aim/solver.hpp"
 #include "task/auto_aim/tracker.hpp"
 #include "task/auto_aim/yolo.hpp"
@@ -45,6 +46,7 @@ int main(int argc, char *argv[]) try {
   auto_aim::Solver solver(config_path);   // 解算器 PnP（第3步）
   auto_aim::Tracker tracker(config_path); // 目标管理 + 卡尔曼滤波（第4步）
   auto_aim::Planner planner(config_path); // 规划器：预测位置 -> 云台角度（第6步）
+  auto_aim::Shooter shooter(config_path); // 发射判定（第8步）
 
   // ---- 兜底弹速 ----
   // 真实弹速由电控通过串口下发（gimbal.state().bullet_speed）。
@@ -64,6 +66,9 @@ int main(int argc, char *argv[]) try {
 
   // 帧计数器（给 YOLO 做调试打印用）
   std::uint64_t frame_count = 0;
+
+  // 连续跟踪帧数，用来判断"滤波是否已收敛"（简单启发式）。
+  int converged_frames = 0;
 
   // 串口下发 + 云台电机响应的额外延迟（秒）。这是估计值，可根据实车表现微调。
   constexpr double kExecutionDelay = 0.05;
@@ -104,6 +109,8 @@ int main(int argc, char *argv[]) try {
     if (!target) {
       // 没有目标：发一条"不控制"指令，让云台停住（或保持），然后处理下一帧。
       gimbal.send(false, false, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f);
+      shooter.reset();
+      converged_frames = 0;
       continue;
     }
 
@@ -133,14 +140,39 @@ int main(int argc, char *argv[]) try {
     auto plan = planner.plan(*target, bullet_speed, ctx);
 
     // ============================================================
-    // 第7步：发指令给云台
+    // 第7步：发射判定 + 发指令给云台
     // ============================================================
+    // 收敛判定：连续跟踪若干帧后认为滤波已收敛（简单启发式，够用）。
+    if (tracker.state() == "tracking") {
+      converged_frames++;
+    } else if (tracker.state() == "lost") {
+      converged_frames = 0;
+    }
+    const bool converged = converged_frames >= 15;
+
+    // 把"这一帧的规划 + 跟踪状态 + 云台实际角度"喂给 Shooter，
+    // 由它决定这一帧到底开不开火（瞄准对齐、冷却、稳定等条件它都会检查）。
+    auto_aim::FireInput fire_in;
+    fire_in.plan = plan;
+    fire_in.tracking = true;                              // 有目标（走到这说明 target 存在）
+    fire_in.converged = converged;                        // 滤波是否已收敛
+    fire_in.measurement = (tracker.state() == "tracking"); // 这一帧有没有新的观测
+    fire_in.following = plan.control;                     // 是否正在控制云台跟随
+    fire_in.control_enabled = true;                       // 云台控制使能
+    fire_in.fire_enabled = true;                          // 发射使能（运行开关）
+    fire_in.frame_age_s = age_s;                          // 帧龄（秒）
+    fire_in.gun_yaw = gimbal.state().yaw;                 // 云台实际 yaw
+    fire_in.gun_pitch = gimbal.state().pitch;             // 云台实际 pitch
+    fire_in.now = std::chrono::steady_clock::now();
+
+    const auto decision = shooter.update(fire_in);
+
     if (plan.control) {
-      // 中期考核只做"识别跟随"，开火留到以后，这里 fire 固定 false。
-      gimbal.send(true, false, plan.yaw, plan.yaw_vel, plan.yaw_acc,
+      // fire 由 Shooter 判定：瞄准对齐且稳定后才开火。
+      gimbal.send(true, decision.fire, plan.yaw, plan.yaw_vel, plan.yaw_acc,
                   plan.pitch, plan.pitch_vel, plan.pitch_acc);
     } else {
-      // 有目标但规划失败（弹道无解等），同样停住云台，别乱发。
+      // 有目标但规划失败（弹道无解等），停住云台、不开火。
       gimbal.send(false, false, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f);
     }
 
@@ -152,6 +184,7 @@ int main(int argc, char *argv[]) try {
     nlohmann::json j;
     j["timestamp"] = wall_s;          // 墙上时钟秒，PlotJuggler 当时间轴
     j["valid"] = plan.control;        // 这一帧有没有有效指令
+    j["fire"] = decision.fire;        // 这一帧是否开火
     j["state"] = tracker.state();     // 跟踪状态：lost / tracking / temporary_lost
     j["bullet_speed"] = bullet_speed; // 当前用的弹速（能看出电控有没有下发）
     j["target_yaw"] = plan.target_yaw;   // 目标方向（来自预测）
