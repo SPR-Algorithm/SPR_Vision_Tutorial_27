@@ -98,43 +98,43 @@ max_pitch_acc: 100
 Q_pitch: [9e6, 0]
 R_pitch: [1]
 
-# Mọi khóa đều có giá trị mặc định trong code, chỉ ghi những gì muốn đổi.
+# Mọi khóa đều có mặc định trong code.
 
 target:
-  mode: outpost            # plate = Task 1 (tịnh tiến) | outpost = Task 2 (tiền đồn)
-  output_mode: predict   # raw | filter | predict  -> 3 chế độ so sánh của Task 1
+  mode: outpost            # plate | outpost | auto (auto: giáp có name == outpost thì dùng outpost)
+  output_mode: predict     # raw | filter | predict
 
-  # ---- nhiễu quan sát (chung) ----
-  fx: 1400.0             # lấy từ camera_matrix (px). BẮT BUỘC đặt đúng
+  # ---- nhiễu quan sát ----
+  fx: 1303.68              # sim 1303.68; xe thật 2348.28
   sigma_pix: 1.0
-  plate_width: 0.135     # giáp nhỏ (m)
-  depth_scale: 1.0       # hiệu chỉnh sai số chiều sâu sau khi đo
-  sigma_floor: 0.01      # m
-  R_yaw: 0.0225          # rad² (Task 1 bạn từng đo 0.0001, hãy dùng số đo của bạn)
-  use_yaw: true          # false nếu yaw PnP của bạn nhiễu/lật -> chỉ dùng xyz
-  gate_chi2: 9.49        # 4 bậc tự do
-  gate_chi2_3dof: 7.81   # khi use_yaw=false
-  # reset_dt: 0.3        # mặc định 0.3 (plate) / 0.6 (outpost)
-  max_predict_s: 1.0     # >= tầm nhìn xa nhất mà Planner hỏi
+  plate_width: 0.135
+  depth_scale: 1.0
+  sigma_floor: 0.01
+  R_yaw: 0.01
+  use_yaw: true
+  gate_chi2: 13.28         # 4 bậc, 99%. (95% = 9.49)
+  gate_chi2_3dof: 11.34
 
-  # ---- Task 1: nhiễu gia tốc σ_a² ((m/s²)²) ----
+  # ---- plate (Task 1) ----
   sa2_x: 2.0
-  sa2_y: 2.0
+  sa2_y: 8.0
   sa2_z: 0.5
   sa2_yaw: 0.5
 
-  # ---- Task 2: tiền đồn ----
-  r0: 0.275              # m. ĐO LẠI trên thiết bị thật
-  sigma_alpha: 30.0      # rad/s². Nhỏ: mượt nhưng trễ khi dừng/đảo chiều; lớn: bám nhanh nhưng nhiễu
-  q_center: 0.001
-  q_r: 0.001
-  q_z: 0.001
-  outpost_class_id: -1   # >=0: chỉ nhận giáp có class_id của tiền đồn
-  yaw_flip: false        # true nếu yaw của Solver hướng VÀO trong
+  # ---- outpost (Task 2) ----
+  r0: 0.275
+  sigma_alpha: 30.0        # rad/s². chưa rõ đơn vị phương sai hay độ lệch chuẩn
+  q_center: 0.001          # tâm quay đứng yên: GIỮ NHỎ
+  outpost_by_name: true    # chỉ nhận giáp có name == ArmorName::outpost
+  outpost_class_id: -1
+  yaw_flip: false
+
+  # ---- hình học đã biết. TÙY CHỌN, đọc cảnh báo trước khi bật ----
+  # fix_geometry: true
+  # plate_heights: [-0.102, 0.0, 0.102]   # thứ tự mảng cần khớp với quy ước đánh chỉ số tấm giáp trong model EKF 
+  # center_z_prior: 1.216        # cao độ tâm trong world: phụ thuộc chiều cao gimbal TẠM: thay bằng 1.216 - (độ cao gimbal so với mặt bệ xám). ĐO LẠI
+  # plate_angles_deg: [0, 120, 240]
 
 tracker:
-  max_lost_time_s: 0.2   # thời gian bám mù tối đa
-  confirm_frames: 3      # số frame liên tiếp để xác nhận mục tiêu
-
-# task2_real
-fire_enabled: false      # thử nghiệm: tắt bắn
+  max_lost_time_s: 0.5
+  confirm_frames: 3
