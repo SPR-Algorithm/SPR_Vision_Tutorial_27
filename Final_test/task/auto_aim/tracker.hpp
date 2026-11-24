@@ -35,8 +35,8 @@ private:
   int outpost_max_lost_count_ = 7500;  // 前哨站
   // double max_coast_s_ = 0.30;        // 无观测仍输出的最长时间
   // double reset_gap_s_ = 1.00;        // 帧间隔过大视为时间断裂
-  double max_coast_s_ = 10000.00;
-  double reset_gap_s_ = 10000.00;
+  double max_coast_s_ = 10.00;
+  double reset_gap_s_ = 10.00;
 
   int detect_count_ = 0;  // 连续有观测的帧数
   int lost_count_ = 0;    // 连续无观测的帧数

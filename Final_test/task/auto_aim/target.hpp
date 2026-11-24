@@ -86,6 +86,14 @@ private:
   std::vector<double> angles_ = {0.0, 2.094395102, 4.188790205};  // rad（0/120/240°）
   double center_z_prior_ = 1.216;  // 初始化选槽用的安装高度 m（图纸 1110/1146 mm）
   
+    //在线学习三块板的相对高度（不依赖绝对高度先验）
+  bool heights_locked_ = false;              // 三块板相对高度是否已锁定
+  double height_sum_[3] = {0.0, 0.0, 0.0};   // 每槽位观测高度累加（相对云台）
+  int    height_cnt_[3] = {0, 0, 0};         // 每槽位观测次数
+  double learned_h_[3] = {0.0, 0.0, 0.0};    // 锁定后的每槽位相对高度
+  // 槽位高度：锁定后用在线学习值，否则用配置值
+  double plateHeight(int k) const { return heights_locked_ ? learned_h_[k] : heights_[k]; }
+
   // TODO(学生): 按自己的建模方案补充内部数据与方法。
 };
 }  // namespace auto_aim

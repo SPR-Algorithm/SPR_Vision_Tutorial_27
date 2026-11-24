@@ -4,6 +4,7 @@
 #include <cmath>
 #include <limits>
 
+#include "tools/logger.hpp"
 #include <yaml-cpp/yaml.h>
 
 #include "tools/math_tools.hpp"
@@ -56,14 +57,14 @@ void Target::loadConfig() //从配置文件中读取参数
   q_alpha_ = get("q_alpha", 30.0);
   r_yaw_ = get("r_yaw", 0.08);
   radius_ = get("radius", 0.275);
-  center_z_prior_ = get("center_z_prior", 1.146);
+  center_z_prior_ = get("center_z_prior", 1.216);
 
   const auto rd = getv("R_trans_diag_", {0.0009, 0.0009, 0.0025});
   if (rd.size() == 3) r_diag_ = Eigen::Vector3d(rd[0], rd[1], rd[2]);
   const auto pp = getv("P0_pos_var_", {0.0025, 0.0025, 0.0025});
   if (pp.size() == 3) p0_pos_ = Eigen::Vector3d(pp[0], pp[1], pp[2]);
 
-  heights_ = getv("plate_heights", {-0.036, 0.0, 0.036});
+  heights_ = getv("plate_heights", {-0.102, 0.0, 0.102});
   const auto ang = getv("plate_angles_deg", {0.0, 120.0, 240.0});
   if (heights_.size() == 3 && ang.size() == 3) {
     angles_.resize(3);
@@ -106,20 +107,32 @@ void Target::initTranslation(const Armor & seed, TimePoint t) //平移装甲板
   initialized_ = true; //目标是否建立
   timestamp_ = t; //记录初始时刻
 }
+/*
+  // 切换为平移目标：清空前哨站的高度学习状态
+  heights_locked_ = false;
+  for (int k = 0; k < 3; ++k) { height_sum_[k] = 0.0; height_cnt_[k] = 0; }
+*/
 
 void Target::initOutpost(const Armor & seed, TimePoint t) //前哨站
 {
+
+  /*
   int slot = 0; //板子编号
   double best = std::numeric_limits<double>::infinity(); //预测误差
   for (int k = 0; k < 3; ++k) {
     const double e = std::abs(seed.xyz_in_world.z() - (center_z_prior_ + heights_[k]));
     if (e < best) { best = e; slot = k; }
   }
+  */
+
+  // 机器人可移动、相对高度未知：不用绝对高度先验选槽，
+  // 固定按“中间板”(slot=1) 初始化；三块板的相对高度由 updateOutpost 在线学习。
+  const int slot = 1;
 
   const double alpha = wrap(seed.ypr_in_world[0]); //观测到的板子的朝向
-  const double theta = wrap(alpha - angles_[slot]); //反解出其相位
-  const Eigen::Vector3d c = seed.xyz_in_world -
-    Eigen::Vector3d(radius_ * std::cos(alpha), radius_ * std::sin(alpha), heights_[slot]); //计算旋转中心c
+  const double theta = wrap(alpha - angles_[slot]+kPi); //反解出其相位 <+kPi>
+  const Eigen::Vector3d c = seed.xyz_in_world +  //<->
+    Eigen::Vector3d(radius_ * std::cos(alpha), radius_ * std::sin(alpha), -plateHeight(slot)); //计算旋转中心c
 
   Eigen::VectorXd x = Eigen::VectorXd::Zero(5); //状态定义 x,y,x,θ相位,ω角速度
   x << c.x(), c.y(), c.z(), theta, 0.0; //将旋转中心的位置存进x,届时反推出装甲板的击打位置
@@ -248,15 +261,29 @@ void Target::updateOutpost(const std::vector<Armor> & obs)
       if (used[k]) continue;
       const double angle = ekf_.x[3] + angles_[k];
       const Eigen::Vector3d pk(ekf_.x[0] + radius_ * std::cos(angle),
-                               ekf_.x[1] + radius_ * std::sin(angle), ekf_.x[2] + heights_[k]);
+                               ekf_.x[1] + radius_ * std::sin(angle), ekf_.x[2] + plateHeight(k));
       const double dp = (a.xyz_in_world - pk).norm();
-      const double dy = std::abs(wrap(a.ypr_in_world[0] - wrap(angle)));
+      const double dy = std::abs(wrap(a.ypr_in_world[0] - wrap(angle+kPi))); //<+kPi>
       if (dp > kAssocM || dy > kAssocYaw) continue;
       const double cost = dp + 0.3 * dy;
       if (cost < best_cost) { best_cost = cost; slot = k; }
     }
     if (slot < 0) continue;
     used[slot] = true;
+
+     // 在线学习该槽位板的绝对高度（相对云台）
+    height_sum_[slot] += a.xyz_in_world.z();
+    ++height_cnt_[slot];
+    // 三块板都见过足够多次后，用相对高度锁定身份
+    if (!heights_locked_ &&
+        height_cnt_[0] >= 15 && height_cnt_[1] >= 15 && height_cnt_[2] >= 15) {
+      const double ref = height_sum_[1] / height_cnt_[1];
+      for (int k = 0; k < 3; ++k)
+        learned_h_[k] = height_sum_[k] / height_cnt_[k] - ref;
+      heights_locked_ = true;
+      tools::logger()->info("[Outpost] heights locked: {:.3f} {:.3f} {:.3f}",
+                            learned_h_[0], learned_h_[1], learned_h_[2]);
+    }
 
     const double angle = ekf_.x[3] + angles_[slot];
     const Eigen::Vector4d z(a.xyz_in_world.x(), a.xyz_in_world.y(), a.xyz_in_world.z(),
@@ -276,7 +303,7 @@ void Target::updateOutpost(const std::vector<Armor> & obs)
     const auto h = [this, slot](const Eigen::VectorXd & x) -> Eigen::VectorXd {
       const double a = x[3] + angles_[slot];
       return Eigen::Vector4d(x[0] + radius_ * std::cos(a), x[1] + radius_ * std::sin(a),
-                             x[2] + heights_[slot], wrap(a));
+                              x[2] + plateHeight(slot), wrap(a+kPi));  //<+kPi>
     };
     const auto sub = [](const Eigen::VectorXd & a, const Eigen::VectorXd & b) -> Eigen::VectorXd {
       Eigen::VectorXd r = a - b;
@@ -312,7 +339,7 @@ Prediction Target::predict(TimePoint query_time) const
       const double angle = theta + angles_[k];
       PredictedArmor a;
       a.xyza << x[0] + radius_ * std::cos(angle), x[1] + radius_ * std::sin(angle),
-        x[2] + heights_[k], wrap(angle);
+        x[2] + plateHeight(k), wrap(angle+kPi);  //<+kPi>
       a.id = k;
       out.armors.push_back(a);
     }

@@ -58,13 +58,14 @@ int main(int argc, char *argv[]) try{
   std::chrono::steady_clock::time_point t;
 
   int frame_index = 0;
-
+  bool last_fire =false;
+  
   while (!exiter.exit()) {
     // Your code start
-    
+
     //取图
     camera.read(img, t);
-    if (cv::waitKey(30) == 'q') {
+    if (cv::waitKey(1) == 'q') {
       break;
     }
     
@@ -109,11 +110,20 @@ int main(int argc, char *argv[]) try{
     const bool trackering_state= tracking || coasting ; //锁定状态
     const bool ctrl = control_enabled && mode == io::GimbalMode::AUTO_AIM && plan.control && trackering_state && fresh; //是否可以控制
     const bool fire = (tracking && plan.fire && fire_enabled); //是否建议开火
+    
     if (ctrl) {
-      gimbal.send(true, fire, plan.yaw, plan.yaw_vel, plan.yaw_acc,
-                  -plan.pitch, -plan.pitch_vel, -plan.pitch_acc); //发送预测后的云台角度
+      gimbal.send(true, fire, plan.yaw, plan.yaw_vel, plan.yaw_acc,-plan.pitch, -plan.pitch_vel, -plan.pitch_acc); //发送预测后的云台角度
+                  //gimbal.send(true, false, 0.3F, 0.0F, 0.0F, gs.pitch, 0.0F, 0.0F);
+                  //gimbal.send(true, false, gs.yaw, 0.0F, 0.0F, 0.3F, 0.0F, 0.0F);
     } else {
       gimbal.send(false, false, gs.yaw, gs.yaw_vel, 0.0F, gs.pitch, gs.pitch_vel, 0.0F); //保持原有的云台角度不变
+    }
+
+    if (fire != last_fire) {
+      tools::logger()->info(
+        "[Fire] fire={} plan.fire={} err={:.5f} (thr=0.0035) aim_id={} state={}",
+        fire, plan.fire, plan.tracking_error, plan.aim_id, tracker.state());
+      last_fire = fire;
     }
 
     // ---- 调试曲线 ----
